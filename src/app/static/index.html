@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Photo and Song Video Maker</title>
+<style>
+/* Layout idea: preview stage first (left column on wide screens), three numbered steps below, a sticky Make bar. */
+:root{
+  --bg:#eceef3; --panel:#ffffff; --ink:#161a24; --muted:#59627a; --line:#d6dae4; --soft:#f3f4f8;
+  --accent:#d6292f; --accent-ink:#ffffff; --focus:#2b56e6; --stage:#0c0e13; --err:#b3261e; --ok:#1d7a4d;
+  --display:"Avenir Next","Segoe UI",system-ui,-apple-system,sans-serif;
+  --body:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1117; --panel:#171b24; --ink:#e9ecf4; --muted:#9aa2b6; --line:#2a3040; --soft:#1e2330;
+    --focus:#86a6ff; --stage:#07080b; --err:#ff8a80; --ok:#5fd29a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1117; --panel:#171b24; --ink:#e9ecf4; --muted:#9aa2b6; --line:#2a3040; --soft:#1e2330;
+  --focus:#86a6ff; --stage:#07080b; --err:#ff8a80; --ok:#5fd29a;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.45;-webkit-text-size-adjust:100%}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+
+.app{max-width:1080px;margin:0 auto;padding:20px 16px 28px;display:grid;gap:20px;grid-template-columns:minmax(0,1fr)}
+.top h1{font-family:var(--display);font-weight:700;font-size:clamp(1.65rem,5.5vw,2.3rem);line-height:1.1;margin:0 0 8px;letter-spacing:-.01em;text-wrap:balance}
+.top p{margin:0;color:var(--muted);max-width:58ch}
+.enc{display:inline-flex;gap:8px;align-items:center;margin-top:10px;font-size:.9rem;color:var(--muted)}
+.enc i{width:9px;height:9px;border-radius:50%;background:var(--muted);display:inline-block}
+.enc.gpu i{background:var(--ok)}
+@media (min-width:880px){
+  .app{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);column-gap:28px;align-items:start}
+  .top{grid-column:1 / -1}
+  .stage-col{position:sticky;top:16px}
+}
+
+.stage-col{display:grid;gap:12px;min-width:0}
+.stage{--ar:1.7778;position:relative;overflow:hidden;background:var(--stage);border:1px solid var(--line);border-radius:14px;
+  margin:0 auto;aspect-ratio:var(--ar);width:min(100%, calc(56vh * var(--ar)))}
+.stage .empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:16px;color:#aeb5c8;font-size:.95rem}
+.stage .bg{position:absolute;inset:-12%;width:124%;height:124%;object-fit:cover;filter:blur(26px) brightness(.7)}
+.stage .fg{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.stage.fill .fg{object-fit:cover}
+.stage.fill .bg{display:none}
+
+.progress{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:10px}
+.bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;position:relative}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s linear}
+.bar.wait i{width:35%;animation:slide 1.2s ease-in-out infinite alternate}
+@keyframes slide{from{margin-left:0}to{margin-left:65%}}
+@media (prefers-reduced-motion: reduce){.bar i{transition:none}.bar.wait i{animation:none;width:100%;opacity:.4}}
+.prow{display:flex;justify-content:space-between;align-items:center;gap:12px;font-variant-numeric:tabular-nums;color:var(--muted)}
+
+.status{margin:0;min-height:1.4em;color:var(--muted)}
+.status.err{color:var(--err)}
+
+.result{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:12px}
+.result h2{margin:0;font-family:var(--display);font-size:1.2rem}
+.result video{width:100%;max-height:60vh;background:#000;border-radius:10px;display:block}
+.meta{margin:0;color:var(--muted);font-size:.9rem;font-variant-numeric:tabular-nums}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row .primary{flex:1 1 180px;width:auto}
+.row .ghost{flex:1 1 140px}
+
+.controls{display:grid;gap:14px;min-width:0}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:12px;min-width:0}
+.step h2{margin:0;font-family:var(--display);font-weight:600;font-size:1.15rem;display:flex;gap:10px;align-items:center}
+.n{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--ink);color:var(--panel);font-size:.85rem;font-weight:700;flex:none}
+
+.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.drop{display:flex;gap:12px;align-items:center;border:1.5px dashed var(--line);border-radius:12px;padding:14px;background:var(--soft);cursor:pointer;min-height:68px;min-width:0}
+.drop.over{border-color:var(--focus)}
+.drop.has{border-style:solid;background:var(--panel)}
+.drop svg{flex:none;width:28px;height:28px;color:var(--muted)}
+.dt{display:grid;gap:2px;min-width:0}
+.dt strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+.dt small{color:var(--muted);font-size:.88rem}
+.sr:focus-visible + .drop{outline:3px solid var(--focus);outline-offset:2px}
+.sr:disabled + .drop{opacity:.55;cursor:not-allowed}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.field{display:grid;gap:6px;font-size:.9rem;color:var(--muted);font-weight:500;min-width:0}
+.field input,.field select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px;width:100%;min-width:0}
+.check{display:flex;gap:10px;align-items:flex-start;font-size:.95rem}
+.check input{width:20px;height:20px;margin:1px 0 0;accent-color:var(--accent);flex:none}
+.check input:disabled + span{color:var(--muted)}
+
+button{font:inherit;cursor:pointer}
+.primary{display:block;text-align:center;text-decoration:none;background:var(--accent);color:var(--accent-ink);border:0;border-radius:12px;padding:14px 18px;font-weight:700;font-size:1.05rem;min-height:52px;width:100%}
+.primary:disabled{opacity:.45;cursor:not-allowed}
+.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px 14px;min-height:44px}
+.link{justify-self:start;background:none;border:0;color:var(--muted);text-decoration:underline;padding:6px 0;min-height:36px}
+
+.makebar{position:sticky;bottom:0;background:var(--bg);padding:12px 0 calc(12px + env(safe-area-inset-bottom));display:grid;gap:6px;border-top:1px solid var(--line)}
+</style>
+</head>
+<body>
+<main class="app">
+  <header class="top">
+    <h1>Photo and Song Video Maker</h1>
+    <p>Pick a picture or a clip, add a song, and get one video back. Your files go to this server only and are deleted after a while.</p>
+    <span class="enc" id="enc"><i></i><span id="encText">Checking the encoder…</span></span>
+  </header>
+
+  <section class="stage-col" aria-label="Preview and result">
+    <div class="stage" id="stage"><div class="empty" id="stageEmpty">Your picture or video shows up here</div></div>
+
+    <div class="progress" id="progress" hidden>
+      <div class="bar" id="bar"><i id="barFill"></i></div>
+      <div class="prow"><span id="ptext">Uploading…</span><button type="button" id="cancelBtn" class="ghost">Cancel</button></div>
+    </div>
+
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+
+    <section id="result" class="result" hidden aria-label="Finished video">
+      <h2>Your video is ready</h2>
+      <video id="rv" controls playsinline preload="metadata"></video>
+      <p id="rmeta" class="meta"></p>
+      <div class="row">
+        <a id="dlBtn" class="primary" href="#" download>Download video</a>
+        <button type="button" id="againBtn" class="ghost">Make another</button>
+      </div>
+    </section>
+  </section>
+
+  <section class="controls" aria-label="Settings">
+    <section class="step">
+      <h2><span class="n">1</span>Picture or video</h2>
+      <input type="file" id="visualFile" class="sr" accept="image/*,video/*">
+      <label class="drop" for="visualFile" id="visualDrop">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="M4 17l5-5 4 4 3-3 4 4"/></svg>
+        <span class="dt"><strong id="visualTitle">Choose a picture or video</strong><small id="visualMeta">JPG, PNG, HEIC, MP4 or MOV. You can also drop a file here.</small></span>
+      </label>
+    </section>
+
+    <section class="step">
+      <h2><span class="n">2</span>Song</h2>
+      <input type="file" id="audioFile" class="sr" accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg,.flac">
+      <label class="drop" for="audioFile" id="audioDrop">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg>
+        <span class="dt"><strong id="audioTitle">Choose a song</strong><small id="audioMeta">MP3, M4A, WAV or similar. Optional for a silent video.</small></span>
+      </label>
+      <button type="button" id="removeSong" class="link" hidden>Remove song</button>
+      <div class="grid2">
+        <label class="field" for="startAt">Start song at (seconds)
+          <input type="number" id="startAt" min="0" step="any" value="0" inputmode="decimal">
+        </label>
+        <label class="field" for="lenSec">Video length (seconds)
+          <input type="number" id="lenSec" min="1" step="any" value="10" inputmode="decimal">
+        </label>
+      </div>
+      <label class="check" for="keepSound"><input type="checkbox" id="keepSound"><span>Keep the video's own sound under the song</span></label>
+    </section>
+
+    <section class="step">
+      <h2><span class="n">3</span>Look</h2>
+      <div class="grid2">
+        <label class="field" for="format">Shape
+          <select id="format">
+            <option value="source">Same as the picture</option>
+            <option value="vertical">Vertical 9:16</option>
+            <option value="square">Square 1:1</option>
+            <option value="wide">Wide 16:9</option>
+          </select>
+        </label>
+        <label class="field" for="quality">Quality
+          <select id="quality">
+            <option value="720">720p</option>
+            <option value="1080" selected>1080p</option>
+            <option value="2160">4K</option>
+          </select>
+        </label>
+      </div>
+      <label class="field" for="fit">Picture placement
+        <select id="fit">
+          <option value="fit">Show the whole picture, blurred sides</option>
+          <option value="fill">Fill the frame, crop the edges</option>
+        </select>
+      </label>
+      <label class="check" for="zoom"><input type="checkbox" id="zoom" checked><span>Slow zoom on pictures</span></label>
+      <label class="check" for="fade"><input type="checkbox" id="fade" checked><span>Fade in and out</span></label>
+      <label class="check" for="bars"><input type="checkbox" id="bars"><span>Music bars along the bottom</span></label>
+    </section>
+
+    <div class="makebar">
+      <button type="button" id="makeBtn" class="primary" disabled>Make video</button>
+      <p id="estimate" class="meta">Add a picture or video to begin.</p>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const S = { visual: null, audio: null, v: null, a: null, vUrl: null, jobId: null, timer: null, busy: false, lenTouched: false };
+
+  function fmtTime(s) {
+    if (!isFinite(s) || s < 0) s = 0;
+    s = Math.round(s);
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  }
+  function fmtSize(b) { return b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB'; }
+  function num(id, d) { const v = parseFloat($(id).value); return isFinite(v) ? v : d; }
+  function setStatus(msg, err) { const s = $('status'); s.textContent = msg || ''; s.classList.toggle('err', !!err); }
+  function isVideoFile(f) { return f.type.indexOf('video/') === 0 || /\.(mp4|m4v|mov|mkv|webm|avi)$/i.test(f.name); }
+  function isAudioFile(f) { return f.type.indexOf('audio/') === 0 || /\.(mp3|m4a|wav|aac|ogg|oga|flac|opus)$/i.test(f.name); }
+
+  /* ---------- encoder badge ---------- */
+  fetch('api/health').then((r) => r.json()).then((h) => {
+    const el = $('enc');
+    if (h.encoder === 'nvenc') { el.classList.add('gpu'); $('encText').textContent = 'Rendering on ' + (h.gpu || 'the NVIDIA GPU') + ' (NVENC)'; }
+    else { $('encText').textContent = 'No GPU encoder found, rendering on the CPU'; }
+  }).catch(() => { $('encText').textContent = 'Server not reachable'; });
+
+  /* ---------- preview stage ---------- */
+  function shapeRatio() {
+    const f = $('format').value;
+    if (f === 'vertical') return 9 / 16;
+    if (f === 'square') return 1;
+    if (f === 'wide') return 16 / 9;
+    return S.v && S.v.w && S.v.h ? S.v.w / S.v.h : 16 / 9;
+  }
+  function renderStage() {
+    const st = $('stage');
+    st.style.setProperty('--ar', shapeRatio().toFixed(4));
+    st.classList.toggle('fill', $('fit').value === 'fill');
+  }
+  function buildStage() {
+    const st = $('stage');
+    st.innerHTML = '';
+    if (!S.visual) {
+      st.innerHTML = '<div class="empty" id="stageEmpty">Your picture or video shows up here</div>';
+      renderStage();
+      return;
+    }
+    const make = (cls) => {
+      let el;
+      if (S.v && S.v.kind === 'video') {
+        el = document.createElement('video');
+        el.muted = true; el.playsInline = true; el.preload = 'metadata';
+        el.src = S.vUrl + '#t=0.1';
+      } else {
+        el = document.createElement('img');
+        el.alt = '';
+        el.src = S.vUrl;
+        el.onerror = function () {
+          if (cls === 'fg') {
+            st.innerHTML = '<div class="empty">No preview for this file here. The server can still use it.</div>';
+          }
+        };
+      }
+      el.className = cls;
+      return el;
+    };
+    st.appendChild(make('bg'));
+    st.appendChild(make('fg'));
+    renderStage();
+  }
+
+  /* ---------- choosing files ---------- */
+  function setVisual(f) {
+    if (!f || S.busy) return;
+    if (S.vUrl) URL.revokeObjectURL(S.vUrl);
+    S.visual = f;
+    S.vUrl = URL.createObjectURL(f);
+    S.lenTouched = false;
+    setStatus('');
+    resetResult();
+    if (isVideoFile(f)) {
+      const v = document.createElement('video');
+      v.preload = 'metadata';
+      v.onloadedmetadata = function () {
+        S.v = { kind: 'video', w: v.videoWidth, h: v.videoHeight, dur: v.duration };
+        afterVisual();
+      };
+      v.onerror = function () { S.v = { kind: 'video', w: 0, h: 0, dur: NaN }; afterVisual(); };
+      v.src = S.vUrl;
+    } else {
+      const img = new Image();
+      img.onload = function () { S.v = { kind: 'image', w: img.naturalWidth, h: img.naturalHeight, dur: NaN }; afterVisual(); };
+      img.onerror = function () { S.v = { kind: 'image', w: 0, h: 0, dur: NaN }; afterVisual(); };
+      img.src = S.vUrl;
+    }
+  }
+  function afterVisual() { setDefaultLength(); buildStage(); updateUI(); }
+
+  function setAudio(f) {
+    if (!f || S.busy) return;
+    if (!isAudioFile(f)) { setStatus('That file is not a song. Choose an MP3, M4A or WAV file.', true); return; }
+    const url = URL.createObjectURL(f);
+    const a = new Audio();
+    a.preload = 'metadata';
+    const finish = function (dur) {
+      URL.revokeObjectURL(url);
+      S.audio = f;
+      S.a = { dur: dur };
+      S.lenTouched = false;
+      $('startAt').value = 0;
+      setStatus('');
+      setDefaultLength();
+      updateUI();
+    };
+    a.onloadedmetadata = function () { finish(isFinite(a.duration) ? a.duration : NaN); };
+    a.onerror = function () { finish(NaN); }; // the server may still read formats this browser can't
+    a.src = url;
+  }
+
+  function setDefaultLength() {
+    if (S.lenTouched) return;
+    let len = 10;
+    if (S.a && isFinite(S.a.dur)) len = Math.max(1, S.a.dur - Math.max(0, num('startAt', 0)));
+    else if (S.v && S.v.kind === 'video' && isFinite(S.v.dur)) len = S.v.dur;
+    $('lenSec').value = Math.round(len * 10) / 10;
+  }
+
+  function updateUI() {
+    const f = S.visual, v = S.v, a = S.audio;
+    $('visualDrop').classList.toggle('has', !!f);
+    $('visualTitle').textContent = f ? f.name : 'Choose a picture or video';
+    $('visualMeta').textContent = f
+      ? (v && v.kind === 'video'
+          ? 'Video' + (v.w ? ', ' + v.w + '×' + v.h : '') + (isFinite(v.dur) ? ', ' + fmtTime(v.dur) : '') + '. Tap to change.'
+          : 'Picture' + (v && v.w ? ', ' + v.w + '×' + v.h : '') + '. Tap to change.')
+      : 'JPG, PNG, HEIC, MP4 or MOV. You can also drop a file here.';
+    $('audioDrop').classList.toggle('has', !!a);
+    $('audioTitle').textContent = a ? a.name : 'Choose a song';
+    $('audioMeta').textContent = a
+      ? (S.a && isFinite(S.a.dur) ? fmtTime(S.a.dur) + ' long. Tap to change.' : 'Tap to change.')
+      : (v && v.kind === 'video' ? 'Optional. Without a song, the video keeps its own sound.' : 'MP3, M4A, WAV or similar. Optional for a silent video.');
+    $('removeSong').hidden = !a;
+    const isVid = !!(v && v.kind === 'video');
+    $('keepSound').disabled = !(isVid && a);
+    $('bars').disabled = !(a || isVid);
+    $('makeBtn').disabled = !f || S.busy;
+    $('estimate').textContent = f
+      ? 'A ' + fmtTime(num('lenSec', 0)) + ' video, rendered on the server. You can leave this page open and come back.'
+      : 'Add a picture or video to begin.';
+  }
+
+  /* ---------- running a job ---------- */
+  function setBusy(b) {
+    S.busy = b;
+    ['visualFile', 'audioFile', 'startAt', 'lenSec', 'keepSound', 'removeSong', 'format', 'quality', 'fit', 'zoom', 'fade', 'bars', 'makeBtn']
+      .forEach(function (id) { $(id).disabled = b; });
+    $('progress').hidden = !b;
+    if (!b) updateUI();
+  }
+  function showProgress(text, frac) {
+    const bar = $('bar');
+    $('ptext').textContent = text;
+    if (frac === null) { bar.classList.add('wait'); $('barFill').style.width = ''; }
+    else { bar.classList.remove('wait'); $('barFill').style.width = (Math.max(0, Math.min(1, frac)) * 100).toFixed(1) + '%'; }
+  }
+  function resetResult() {
+    const rv = $('rv');
+    try { rv.pause(); } catch (e) { /* ignore */ }
+    rv.removeAttribute('src');
+    $('result').hidden = true;
+  }
+
+  function submit() {
+    if (S.busy || !S.visual) return;
+    const fd = new FormData();
+    fd.append('visual', S.visual, S.visual.name);
+    if (S.audio) fd.append('audio', S.audio, S.audio.name);
+    fd.append('fmt', $('format').value);
+    fd.append('quality', $('quality').value);
+    fd.append('fit', $('fit').value);
+    fd.append('zoom', $('zoom').checked ? '1' : '0');
+    fd.append('fade', $('fade').checked ? '1' : '0');
+    fd.append('bars', $('bars').checked ? '1' : '0');
+    fd.append('keep_sound', $('keepSound').checked ? '1' : '0');
+    fd.append('start', String(num('startAt', 0)));
+    fd.append('length', String(num('lenSec', 0)));
+    resetResult();
+    setStatus('');
+    setBusy(true);
+    showProgress('Uploading 0%', 0);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', 'api/jobs');
+    xhr.upload.onprogress = function (e) {
+      if (e.lengthComputable) showProgress('Uploading ' + Math.round(e.loaded / e.total * 100) + '%', e.loaded / e.total);
+    };
+    xhr.onload = function () {
+      let body = {};
+      try { body = JSON.parse(xhr.responseText); } catch (e) { /* ignore */ }
+      if (xhr.status === 200 && body.id) {
+        S.jobId = body.id;
+        try { localStorage.setItem('psv-job', body.id); } catch (e) { /* ignore */ }
+        showProgress('Reading your files…', null);
+        startPolling();
+      } else {
+        setBusy(false);
+        setStatus(typeof body.detail === 'string' ? body.detail : 'The upload failed. Try again.', true);
+      }
+    };
+    xhr.onerror = function () { setBusy(false); setStatus('Could not reach the server. Check your connection and try again.', true); };
+    xhr.send(fd);
+  }
+
+  function startPolling() {
+    stopPolling();
+    tick();
+    S.timer = setInterval(tick, 700);
+  }
+  function stopPolling() { if (S.timer) { clearInterval(S.timer); S.timer = null; } }
+
+  async function tick() {
+    if (!S.jobId) return;
+    let r;
+    try { r = await fetch('api/jobs/' + S.jobId); } catch (e) { return; }
+    if (r.status === 404) { stopPolling(); S.jobId = null; try { localStorage.removeItem('psv-job'); } catch (e) { /* ignore */ } setBusy(false); return; }
+    const j = await r.json();
+    if (j.status === 'queued') {
+      if (!S.busy) setBusy(true);
+      showProgress(j.stage + '…', null);
+    } else if (j.status === 'running') {
+      if (!S.busy) setBusy(true);
+      showProgress('Rendering ' + Math.round(j.progress * 100) + '%' + (j.speed ? ', ' + j.speed + ' real time' : ''), j.progress);
+    } else if (j.status === 'done') {
+      stopPolling(); setBusy(false); showResult(j); setStatus('');
+    } else if (j.status === 'cancelled') {
+      stopPolling(); setBusy(false); setStatus('Cancelled.');
+      try { localStorage.removeItem('psv-job'); } catch (e) { /* ignore */ }
+    } else {
+      stopPolling(); setBusy(false); setStatus(j.error || 'Something went wrong while rendering.', true);
+      try { localStorage.removeItem('psv-job'); } catch (e) { /* ignore */ }
+    }
+  }
+
+  function showResult(j) {
+    const base = 'api/jobs/' + j.id + '/video';
+    $('rv').src = base + '#t=0.8';
+    $('dlBtn').href = base + '?dl=1';
+    $('dlBtn').setAttribute('download', j.filename || 'video.mp4');
+    const speed = j.render_seconds ? (j.length / j.render_seconds).toFixed(1) + 'x real time' : '';
+    $('rmeta').textContent = 'MP4, ' + fmtTime(j.length) + ', ' + j.width + '×' + j.height + ', ' + fmtSize(j.bytes) +
+      '. Rendered in ' + fmtTime(j.render_seconds || 0) + (speed ? ' (' + speed + ')' : '') + ' with ' + (j.encoder === 'nvenc' ? 'NVENC' : 'the CPU') + '.';
+    $('result').hidden = false;
+    try { $('result').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* ignore */ }
+  }
+
+  /* ---------- wiring ---------- */
+  $('visualFile').addEventListener('change', (e) => { setVisual(e.target.files[0]); e.target.value = ''; });
+  $('audioFile').addEventListener('change', (e) => { setAudio(e.target.files[0]); e.target.value = ''; });
+  function dropTarget(el, handler) {
+    ['dragenter', 'dragover'].forEach((ev) => el.addEventListener(ev, (e) => { e.preventDefault(); el.classList.add('over'); }));
+    ['dragleave', 'drop'].forEach((ev) => el.addEventListener(ev, (e) => { e.preventDefault(); el.classList.remove('over'); }));
+    el.addEventListener('drop', (e) => { const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) handler(f); });
+  }
+  dropTarget($('visualDrop'), setVisual);
+  dropTarget($('audioDrop'), setAudio);
+
+  $('removeSong').addEventListener('click', function () {
+    S.audio = null; S.a = null; S.lenTouched = false; $('startAt').value = 0;
+    setDefaultLength(); updateUI();
+  });
+  $('startAt').addEventListener('input', function () { setDefaultLength(); updateUI(); });
+  $('lenSec').addEventListener('input', function () { S.lenTouched = true; updateUI(); });
+  ['format', 'fit'].forEach((id) => $(id).addEventListener('change', renderStage));
+  ['format', 'quality', 'fit', 'zoom', 'fade', 'bars', 'keepSound'].forEach((id) => $(id).addEventListener('change', updateUI));
+
+  $('makeBtn').addEventListener('click', submit);
+  $('cancelBtn').addEventListener('click', function () {
+    if (S.jobId) { fetch('api/jobs/' + S.jobId, { method: 'DELETE' }).catch(function () {}); setStatus('Stopping…'); }
+  });
+  $('againBtn').addEventListener('click', function () {
+    resetResult();
+    if (S.jobId) { fetch('api/jobs/' + S.jobId, { method: 'DELETE' }).catch(function () {}); }
+    S.jobId = null;
+    try { localStorage.removeItem('psv-job'); } catch (e) { /* ignore */ }
+    try { document.querySelector('.controls').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* ignore */ }
+  });
+
+  /* pick up a job that was running when the page was closed */
+  try {
+    const saved = localStorage.getItem('psv-job');
+    if (saved) { S.jobId = saved; startPolling(); }
+  } catch (e) { /* ignore */ }
+
+  updateUI();
+  renderStage();
+})();
+</script>
+</body>
+</html>

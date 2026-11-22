@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>photo-song-video</Name>
+  <Repository>photo-song-video:latest</Repository>
+  <Registry/>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support/>
+  <Project/>
+  <Overview>Turn a picture or a video plus a song into one video. Rendering runs on the NVIDIA GPU (NVENC) with a CPU fallback. Build the image first: docker build -t photo-song-video .</Overview>
+  <Category>MediaApp:Video Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8000]/</WebUI>
+  <TemplateURL/>
+  <Icon/>
+  <ExtraParams>--runtime=nvidia</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Nvidia Driver plugin (Community Apps) with driver 530 or newer.</Requires>
+  <Config Name="Web UI port" Target="8000" Default="8095" Mode="tcp" Description="Port for the web page." Type="Port" Display="always" Required="true" Mask="false">8095</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/photo-song-video" Mode="rw" Description="Temporary uploads and finished videos. Keep this on the cache pool." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/photo-song-video</Config>
+  <Config Name="NVIDIA_VISIBLE_DEVICES" Target="NVIDIA_VISIBLE_DEVICES" Default="all" Mode="" Description="Use all, or paste the GPU UUID from Settings > Nvidia Driver (starts with GPU-)." Type="Variable" Display="always" Required="true" Mask="false">all</Config>
+  <Config Name="NVIDIA_DRIVER_CAPABILITIES" Target="NVIDIA_DRIVER_CAPABILITIES" Default="all" Mode="" Description="Must include video for NVENC." Type="Variable" Display="always" Required="true" Mask="false">all</Config>
+  <Config Name="Max upload (MB)" Target="MAX_UPLOAD_MB" Default="4096" Mode="" Description="Largest upload accepted." Type="Variable" Display="advanced" Required="false" Mask="false">4096</Config>
+  <Config Name="Max video length (seconds)" Target="MAX_LENGTH_SECONDS" Default="3600" Mode="" Description="Longest video that can be made." Type="Variable" Display="advanced" Required="false" Mask="false">3600</Config>
+  <Config Name="Keep results (hours)" Target="RETENTION_HOURS" Default="12" Mode="" Description="Finished videos are deleted after this long." Type="Variable" Display="advanced" Required="false" Mask="false">12</Config>
+  <Config Name="Encoder" Target="ENCODER" Default="auto" Mode="" Description="auto, nvenc or cpu." Type="Variable" Display="advanced" Required="false" Mask="false">auto</Config>
+</Container>

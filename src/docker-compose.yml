@@ -1,0 +1,21 @@
+services:
+  photo-song-video:
+    build: .
+    image: photo-song-video:latest
+    container_name: photo-song-video
+    restart: unless-stopped
+    runtime: nvidia
+    ports:
+      - "8095:8000"
+    environment:
+      # "all" or the GPU UUID from Settings > Nvidia Driver on Unraid (starts with GPU-)
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
+      # Optional
+      # - ENCODER=auto            # auto, nvenc or cpu
+      # - MAX_UPLOAD_MB=4096
+      # - MAX_LENGTH_SECONDS=3600
+      # - RETENTION_HOURS=12
+      # - MAX_CONCURRENT_JOBS=1
+    volumes:
+      - /mnt/user/appdata/photo-song-video:/data
