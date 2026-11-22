@@ -240,6 +240,7 @@ async def process(job):
     except Cancelled:
         job.status, job.stage = "cancelled", "Cancelled"
     except render.InputError as e:
+        log.warning("job %s rejected: %s", job.id, e)
         job.status, job.error, job.stage = "error", str(e), "Failed"
     except Exception as e:  # noqa: BLE001
         log.exception("job %s failed", job.id)

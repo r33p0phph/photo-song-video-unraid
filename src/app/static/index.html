@@ -143,22 +143,22 @@ button{font:inherit;cursor:pointer}
     </section>
 
     <section class="step">
-      <h2><span class="n">2</span>Song</h2>
-      <input type="file" id="audioFile" class="sr" accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg,.flac">
+      <h2><span class="n">2</span>Song or video sound</h2>
+      <input type="file" id="audioFile" class="sr" accept="audio/*,video/*,.mp3,.m4a,.wav,.aac,.ogg,.flac,.mp4,.mov,.mkv,.webm">
       <label class="drop" for="audioFile" id="audioDrop">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg>
-        <span class="dt"><strong id="audioTitle">Choose a song</strong><small id="audioMeta">MP3, M4A, WAV or similar. Optional for a silent video.</small></span>
+        <span class="dt"><strong id="audioTitle">Choose a song or a video</strong><small id="audioMeta">MP3, M4A, WAV, or a video to use its sound. Optional for a silent video.</small></span>
       </label>
-      <button type="button" id="removeSong" class="link" hidden>Remove song</button>
+      <button type="button" id="removeSong" class="link" hidden>Remove</button>
       <div class="grid2">
-        <label class="field" for="startAt">Start song at (seconds)
+        <label class="field" for="startAt">Start sound at (seconds)
           <input type="number" id="startAt" min="0" step="any" value="0" inputmode="decimal">
         </label>
         <label class="field" for="lenSec">Video length (seconds)
           <input type="number" id="lenSec" min="1" step="any" value="10" inputmode="decimal">
         </label>
       </div>
-      <label class="check" for="keepSound"><input type="checkbox" id="keepSound"><span>Keep the video's own sound under the song</span></label>
+      <label class="check" for="keepSound"><input type="checkbox" id="keepSound"><span>Keep the picture video's own sound under it</span></label>
     </section>
 
     <section class="step">
@@ -214,6 +214,7 @@ button{font:inherit;cursor:pointer}
   function setStatus(msg, err) { const s = $('status'); s.textContent = msg || ''; s.classList.toggle('err', !!err); }
   function isVideoFile(f) { return f.type.indexOf('video/') === 0 || /\.(mp4|m4v|mov|mkv|webm|avi)$/i.test(f.name); }
   function isAudioFile(f) { return f.type.indexOf('audio/') === 0 || /\.(mp3|m4a|wav|aac|ogg|oga|flac|opus)$/i.test(f.name); }
+  function isSoundSource(f) { return isAudioFile(f) || isVideoFile(f); }
 
   /* ---------- encoder badge ---------- */
   fetch('api/health').then((r) => r.json()).then((h) => {
@@ -296,7 +297,7 @@ button{font:inherit;cursor:pointer}
 
   function setAudio(f) {
     if (!f || S.busy) return;
-    if (!isAudioFile(f)) { setStatus('That file is not a song. Choose an MP3, M4A or WAV file.', true); return; }
+    if (!isSoundSource(f)) { setStatus('That file has no sound to use. Choose an MP3, M4A or WAV song, or a video.', true); return; }
     const url = URL.createObjectURL(f);
     const a = new Audio();
     a.preload = 'metadata';
@@ -333,10 +334,10 @@ button{font:inherit;cursor:pointer}
           : 'Picture' + (v && v.w ? ', ' + v.w + '×' + v.h : '') + '. Tap to change.')
       : 'JPG, PNG, HEIC, MP4 or MOV. You can also drop a file here.';
     $('audioDrop').classList.toggle('has', !!a);
-    $('audioTitle').textContent = a ? a.name : 'Choose a song';
+    $('audioTitle').textContent = a ? a.name : 'Choose a song or a video';
     $('audioMeta').textContent = a
-      ? (S.a && isFinite(S.a.dur) ? fmtTime(S.a.dur) + ' long. Tap to change.' : 'Tap to change.')
-      : (v && v.kind === 'video' ? 'Optional. Without a song, the video keeps its own sound.' : 'MP3, M4A, WAV or similar. Optional for a silent video.');
+      ? ((isVideoFile(a) ? 'Sound from a video' : 'Song') + (S.a && isFinite(S.a.dur) ? ', ' + fmtTime(S.a.dur) + ' long' : '') + '. Tap to change.')
+      : (v && v.kind === 'video' ? 'Optional. Without this, the video keeps its own sound.' : 'MP3, M4A, WAV, or a video to use its sound. Optional for a silent video.');
     $('removeSong').hidden = !a;
     const isVid = !!(v && v.kind === 'video');
     $('keepSound').disabled = !(isVid && a);

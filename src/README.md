@@ -1,6 +1,6 @@
 # Photo and Song Video Maker (GPU)
 
-A small web app in a Docker container. Open it from your phone or computer, pick a picture or a video, add a song, and it returns one MP4. Rendering uses ffmpeg with the NVIDIA GPU (NVENC), and falls back to the CPU if no GPU encoder is found.
+A small web app in a Docker container. Open it from your phone or computer, pick a picture or a video, add a song (or the sound of another video), and it returns one MP4. Rendering uses ffmpeg with the NVIDIA GPU (NVENC), and falls back to the CPU if no GPU encoder is found.
 
 Options: vertical, square, wide or same-as-source shape, 720p / 1080p / 4K, whole picture with blurred sides or fill-and-crop, slow zoom on pictures, fade in and out, music bars, start point and length for the song, and mixing a video's own sound under the song.
 

@@ -10,7 +10,10 @@ try:  # HEIC/HEIF pictures from iPhones
 except Exception:  # pragma: no cover - optional
     pass
 
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageFile, ImageOps, UnidentifiedImageError
+
+# Photos that were cut short while syncing or copying still open, with the missing part left grey.
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 FPS = 30
 LONG_SIDE = {720: 1280, 1080: 1920, 2160: 3840}
@@ -21,8 +24,12 @@ SHORT_SIDE = {720: 720, 1080: 1080, 2160: 2160}
 VIDEO_FORMATS = {"mov", "mp4", "matroska", "webm", "avi", "mpegts", "asf"}
 AUDIO_FORMATS = {
     "mp3", "wav", "flac", "ogg", "aac", "m4a", "mov", "mp4", "matroska", "webm",
-    "aiff", "asf", "ac3", "eac3", "w64", "caf",
+    "aiff", "asf", "ac3", "eac3", "w64", "caf", "avi", "mpegts",
 }
+
+
+# Still-picture containers that ffmpeg can decode when Pillow cannot.
+IMAGE_FORMATS = {"image2", "jpeg_pipe", "png_pipe", "webp_pipe", "bmp_pipe", "tiff_pipe", "jpegls_pipe", "jpeg2000_pipe", "gif"}
 
 
 class InputError(ValueError):
@@ -48,11 +55,11 @@ def probe(path: Path) -> dict:
     except subprocess.TimeoutExpired:
         raise InputError("Reading the file took too long.")
     if p.returncode != 0:
-        raise InputError("This file can't be read as a video or a song.")
+        raise InputError("This file can't be read. It may be damaged, or not a picture, video or song.")
     try:
         return json.loads(p.stdout)
     except ValueError:
-        raise InputError("This file can't be read as a video or a song.")
+        raise InputError("This file can't be read. It may be damaged, or not a picture, video or song.")
 
 
 def _format_ok(meta: dict, allowed: set) -> bool:
@@ -62,7 +69,7 @@ def _format_ok(meta: dict, allowed: set) -> bool:
 
 def video_info(meta: dict) -> dict:
     if not _format_ok(meta, VIDEO_FORMATS):
-        raise InputError("This video format isn't supported. Use MP4, MOV, MKV or WebM.")
+        raise InputError("This file isn't a picture or video that can be used. Use JPG, PNG, HEIC, MP4, MOV, MKV or WebM.")
     streams = meta.get("streams", [])
     v = next((s for s in streams
               if s.get("codec_type") == "video" and not s.get("disposition", {}).get("attached_pic")), None)
@@ -91,27 +98,47 @@ def video_info(meta: dict) -> dict:
 
 def audio_info(meta: dict) -> dict:
     if not _format_ok(meta, AUDIO_FORMATS):
-        raise InputError("This song format isn't supported. Use MP3, M4A, WAV, FLAC or OGG.")
+        raise InputError("This sound file isn't supported. Use MP3, M4A, WAV, FLAC or OGG, or a video file (MP4, MOV, MKV or WebM).")
     if not any(s.get("codec_type") == "audio" for s in meta.get("streams", [])):
-        raise InputError("No audio track found in the song file.")
+        raise InputError("There is no sound in that file, so it can't be used as the song.")
     dur = float(meta["format"].get("duration") or 0)
     if dur <= 0:
-        raise InputError("Couldn't work out how long the song is.")
+        raise InputError("Couldn't work out how long the sound is.")
     return {"duration": dur}
 
 
 # ---------------------------------------------------------------- pictures
+def _still_with_ffmpeg(src: Path, dst: Path):
+    """Second chance for a picture Pillow cannot decode: let ffmpeg read the first frame."""
+    try:
+        if not _format_ok(probe(src), IMAGE_FORMATS):
+            return None
+        tmp = dst.with_name("ffstill.png")
+        p = subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-protocol_whitelist", "file", "-i", str(src),
+             "-frames:v", "1", "-an", str(tmp)],
+            capture_output=True, timeout=120)
+        if p.returncode != 0 or not tmp.exists():
+            return None
+        im = Image.open(tmp)
+        im.load()
+        tmp.unlink()
+        return im
+    except Exception:
+        return None
+
+
 def normalise_image(src: Path, dst: Path, max_side: int = 4096):
     """Decode with Pillow (HEIC, WebP, GIF, EXIF rotation all handled), flatten to RGB, write a clean PNG."""
     try:
         im = Image.open(src)
         im.load()
-    except UnidentifiedImageError:
-        raise NotAnImage()
     except Image.DecompressionBombError:
         raise InputError("This picture is too large to process.")
-    except Exception:
-        raise NotAnImage()
+    except Exception:  # not a picture Pillow knows, or one it cannot decode
+        im = _still_with_ffmpeg(src, dst)
+        if im is None:
+            raise NotAnImage()
     try:
         im = ImageOps.exif_transpose(im)
         if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
@@ -163,7 +190,8 @@ def build_cmd(o: dict, enc: str, hwdec: bool, out_path: str) -> list:
             cmd += ["-hwaccel", "cuda"]
         cmd += ["-protocol_whitelist", "file", "-stream_loop", "-1", "-i", o["visual"]]
     if song:
-        cmd += ["-protocol_whitelist", "file", "-ss", "%.3f" % o["start"], "-t", "%.3f" % D, "-i", o["audio"]]
+        # -vn: if this file is a video, only its sound is used and its picture is never decoded
+        cmd += ["-protocol_whitelist", "file", "-vn", "-ss", "%.3f" % o["start"], "-t", "%.3f" % D, "-i", o["audio"]]
 
     parts = []
 
