@@ -14,6 +14,20 @@ The public name and the build label are kept apart.
 
 The build label never goes into the public name. To release: add an entry to the top of `CHANGELOG.md`, then run `python3 plugin/make_plg.py photo-song-video.plg <build label> <plugin link>`.
 
+## Branches and releases
+
+- `main` is the release. The plugin's update link points at it, so anything pushed to `main` reaches every server that uses the plugin.
+- `dev` is where work and testing happen. Changes go there first, are tested locally, then installed on the server from a link that points at the exact `dev` commit.
+- When that install works, `dev` is merged into `main`. The build label in `CHANGELOG.md` is the release.
+
+Test link for a `dev` commit (replace the long id with the commit to try):
+
+```
+https://raw.githubusercontent.com/r33p0phph/photo-song-video-unraid/<commit id>/photo-song-video.plg
+```
+
+The plugin file always carries the `main` link as its update link, so a server that was installed from a `dev` link still follows `main` for updates afterwards.
+
 ## Install
 
 In Unraid, open **Plugins**, then **Install Plugin**, paste this link and press **Install**:
