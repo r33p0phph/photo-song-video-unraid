@@ -58,15 +58,31 @@ if ! docker build --label "psv.version=$VERSION" -t "$IMAGE" "$SRC"; then
 fi
 
 # An earlier container from this plugin is replaced, keeping its port and GPU choice.
-# A container with the same name that this plugin did not create is left alone.
+# A container made from the Docker tab (its template, same image) is recreated the way the Docker tab's
+# Update does it, which keeps every setting in the template. Any other container with this name is left alone.
+UPDATE_CONTAINER="${UPDATE_CONTAINER:-/usr/local/emhttp/plugins/dynamix.docker.manager/scripts/update_container}"
 GPU="all"
 PORT=""
+RECREATED=0
 if docker inspect --type container "$NAME" >/dev/null 2>&1; then
   if [ "$(docker inspect --type container -f '{{index .Config.Labels "psv.plugin"}}' "$NAME" 2>/dev/null)" = "1" ]; then
     PORT=$(docker inspect --type container -f '{{with index .HostConfig.PortBindings "8000/tcp"}}{{(index . 0).HostPort}}{{end}}' "$NAME" 2>/dev/null)
     G=$(docker inspect --type container -f '{{range .Config.Env}}{{println .}}{{end}}' "$NAME" 2>/dev/null | sed -n 's/^NVIDIA_VISIBLE_DEVICES=//p' | head -n 1)
     [ -n "$G" ] && GPU="$G"
     docker rm -f "$NAME" >/dev/null 2>&1
+  elif [ "$(docker inspect --type container -f '{{.Config.Image}}' "$NAME" 2>/dev/null)" = "$IMAGE" ] \
+      && [ "$(docker inspect --type container -f '{{index .Config.Labels "net.unraid.docker.managed"}}' "$NAME" 2>/dev/null)" = "dockerman" ] \
+      && [ -x "$UPDATE_CONTAINER" ]; then
+    echo
+    echo "Recreating the $NAME container from the Docker tab with the new image."
+    if ! "$UPDATE_CONTAINER" "$NAME"; then
+      echo
+      echo "The container could not be recreated. Open it in the Docker tab, choose Edit, then Apply."
+      exit 0
+    fi
+    PORT=$(docker inspect --type container -f '{{with index .HostConfig.PortBindings "8000/tcp"}}{{(index . 0).HostPort}}{{end}}' "$NAME" 2>/dev/null)
+    [ -n "$PORT" ] || PORT=$FIRST_PORT
+    RECREATED=1
   else
     echo
     echo "A container named $NAME that this plugin did not create already exists, so it was left as it is."
@@ -75,6 +91,7 @@ if docker inspect --type container "$NAME" >/dev/null 2>&1; then
   fi
 fi
 
+if [ "$RECREATED" != 1 ]; then
 port_free() { ! ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]$1\$"; }
 if [ -z "$PORT" ]; then
   PORT=$FIRST_PORT
@@ -103,6 +120,7 @@ if ! docker run -d --name "$NAME" --restart unless-stopped $RUNTIME \
     "$IMAGE" >/dev/null; then
   echo "The container could not be started. Run psv-setup again, or add it from the Docker tab."
   exit 1
+fi
 fi
 
 HEALTH=""

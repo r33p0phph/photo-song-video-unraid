@@ -43,6 +43,8 @@ case "$cmd" in
       exit 1
     fi
     case "$fmt" in
+      *Config.Image*) cat "$S/c_image" 2>/dev/null;;
+      *net.unraid.docker.managed*) cat "$S/c_managed" 2>/dev/null;;
       *psv.plugin*) cat "$S/c_label" 2>/dev/null;;
       *PortBindings*) cat "$S/c_port" 2>/dev/null;;
       *Config.Env*) cat "$S/c_env" 2>/dev/null;;
@@ -76,6 +78,14 @@ echo "State Recv-Q Send-Q Local Address:Port Peer Address:Port"
 [ -f "${STATE}/busy_ports" ] && while read -r p; do echo "LISTEN 0 4096 0.0.0.0:$p 0.0.0.0:*"; done < "${STATE}/busy_ports"
 exit 0
 '''
+UPDATE = r'''#!/bin/bash
+# Stand-in for Unraid's update_container: recreate the container from its template.
+echo "update_container $*" >> "${STATE}/calls.log"
+echo "Pulling image: photo-song-video:latest"; echo "Successfully removed container: $1"
+echo 1 > "${STATE}/container"; : > "${STATE}/c_label"; echo 8100 > "${STATE}/c_port"
+echo dockerman > "${STATE}/c_managed"; echo photo-song-video:latest > "${STATE}/c_image"
+exit 0
+'''
 HOSTNAME = r'''#!/bin/bash
 echo "192.168.1.50 "
 '''
@@ -89,6 +99,8 @@ def reset(flags=()):
         p = STUBS / name
         p.write_text(body)
         p.chmod(0o755)
+    (ROOT / "update_container").write_text(UPDATE)
+    (ROOT / "update_container").chmod(0o755)
     for f in flags:
         (STATE / f).write_text("1\n")
 
@@ -101,6 +113,7 @@ def env():
         "FLASH": str(ROOT / "boot"),
         "PLUGIN_DIR": str(ROOT / "usr/local/emhttp/plugins/photo-song-video"),
         "APPDATA": str(ROOT / "mnt/user/appdata"),
+        "UPDATE_CONTAINER": str(ROOT / "update_container"),
     })
     return e
 
@@ -208,6 +221,23 @@ check("6 foreign container left alone", code == 0 and "docker run" not in calls(
 reset(["build_fails"])
 code, out = run_plg(plg1)
 check("7 build failure is reported and fails the install", code != 0 and "build failed" in out.lower(), out)
+
+# 9. container made from the Docker tab (template, same image, no plugin label): recreated with Unraid's own update
+reset()
+for f, v in (("container", "1"), ("c_label", "\n"), ("c_managed", "dockerman\n"), ("c_image", "photo-song-video:latest\n"), ("c_port", "8100\n")):
+    (STATE / f).write_text(v)
+code, out = run_plg(plg1)
+check("9 template container recreated by update_container, no docker run",
+      code == 0 and "update_container photo-song-video" in calls() and "docker run" not in calls(), out + calls())
+check("9 reports the encoder and the container's port", "GPU (NVENC)" in out and ":8100" in out, out[-300:])
+
+# 10. same, but Unraid's update script is missing: left alone with instructions
+reset()
+for f, v in (("container", "1"), ("c_label", "\n"), ("c_managed", "dockerman\n"), ("c_image", "photo-song-video:latest\n")):
+    (STATE / f).write_text(v)
+(ROOT / "update_container").unlink()
+code, out = run_plg(plg1)
+check("10 no update script: container left alone", code == 0 and "docker run" not in calls() and "left as it is" in out, out)
 
 # 8. remove
 reset()

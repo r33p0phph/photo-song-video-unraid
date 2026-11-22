@@ -1,7 +1,7 @@
 <?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
 <!ENTITY name "photo-song-video">
-<!ENTITY version "2026.11.21c">
+<!ENTITY version "2026.11.21d">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/r33p0phph/photo-song-video-unraid/main/photo-song-video.plg">
 <!ENTITY emhttp "/usr/local/emhttp/plugins/&name;">
 <!ENTITY flash "/boot/config/plugins/&name;">
@@ -9,8 +9,9 @@
 <PLUGIN name="&name;" author="Built with Claude" version="&version;" min="6.12.0" pluginURL="&pluginURL;">
 
 <CHANGES>
-###2026.11.21c
-- Fixes the container not being started on a first install, and old setup files being kept on update.
+###2026.11.21d
+- The song slot also takes a video and uses its sound. Damaged or cut-short photos now open instead of being refused.
+- Updating the plugin now also recreates a container that was made from the Docker tab.
 - Builds the app image on the server, adds it to the Docker tab and starts it. Uses the NVIDIA GPU (NVENC) when the Nvidia Driver plugin is installed, otherwise the CPU.
 </CHANGES>
 
@@ -25,7 +26,7 @@ rm -f &emhttp;/payload.b64 /usr/local/sbin/psv-setup
 <!-- the app, packed as a base64 tarball -->
 <FILE Name="&emhttp;/payload.b64" Mode="0644">
 <INLINE><![CDATA[
-H4sIAHFPAmsC/+29+14bSbYu2H/rKbLkdkty6c7FtrDojQGX6baBAezqHjYjEikFsnUrpQRm2/79
+H4sIAIpQAmsC/+29+14bSbYu2H/rKbLkdkty6c7FtrDojQGX6baBAezqHjYjEikFsnUrpQRm2/79
 zlucN5gXmTeZJ5nvWysiMzIlAa7trn1mH6u7TGZkXFesWLFusaLcGbU/BpPe5XA0Cf70r/lV8Vtf
 XZW/+KX/VqtPnWem16qrtfU/edU//QG/WTj1J2j+T/97/p48qbRa49u2374KWq3MkzKeM+XL3jRz
 tLu183a3POhkZsOJ3+uUpsFg3PenQfnToJ/504/ff4vfjiz/bq8f/OvauGf916srT5Prv/r06Wrt
@@ -400,7 +401,7 @@ oUM8M/M9RlerLx/brroIxMMxSht3zUBZs2Qg83qc79Ff1hr3WJ6Up/uhPf/x+/H78fvx+/H78fvx
 # Photo and Song Video Maker: set up the Docker image and container on Unraid.
 # Runs when the plugin is installed or updated. Safe to run again: psv-setup [--force]
 NAME=photo-song-video
-VERSION="2026.11.21c"
+VERSION="2026.11.21d"
 FLASH="${FLASH:-/boot}"
 PLUGIN_DIR="${PLUGIN_DIR:-/usr/local/emhttp/plugins/$NAME}"
 APPDATA="${APPDATA:-/mnt/user/appdata}"
@@ -456,15 +457,31 @@ if ! docker build --label "psv.version=$VERSION" -t "$IMAGE" "$SRC"; then
 fi
 
 # An earlier container from this plugin is replaced, keeping its port and GPU choice.
-# A container with the same name that this plugin did not create is left alone.
+# A container made from the Docker tab (its template, same image) is recreated the way the Docker tab's
+# Update does it, which keeps every setting in the template. Any other container with this name is left alone.
+UPDATE_CONTAINER="${UPDATE_CONTAINER:-/usr/local/emhttp/plugins/dynamix.docker.manager/scripts/update_container}"
 GPU="all"
 PORT=""
+RECREATED=0
 if docker inspect --type container "$NAME" >/dev/null 2>&1; then
   if [ "$(docker inspect --type container -f '{{index .Config.Labels "psv.plugin"}}' "$NAME" 2>/dev/null)" = "1" ]; then
     PORT=$(docker inspect --type container -f '{{with index .HostConfig.PortBindings "8000/tcp"}}{{(index . 0).HostPort}}{{end}}' "$NAME" 2>/dev/null)
     G=$(docker inspect --type container -f '{{range .Config.Env}}{{println .}}{{end}}' "$NAME" 2>/dev/null | sed -n 's/^NVIDIA_VISIBLE_DEVICES=//p' | head -n 1)
     [ -n "$G" ] && GPU="$G"
     docker rm -f "$NAME" >/dev/null 2>&1
+  elif [ "$(docker inspect --type container -f '{{.Config.Image}}' "$NAME" 2>/dev/null)" = "$IMAGE" ] \
+      && [ "$(docker inspect --type container -f '{{index .Config.Labels "net.unraid.docker.managed"}}' "$NAME" 2>/dev/null)" = "dockerman" ] \
+      && [ -x "$UPDATE_CONTAINER" ]; then
+    echo
+    echo "Recreating the $NAME container from the Docker tab with the new image."
+    if ! "$UPDATE_CONTAINER" "$NAME"; then
+      echo
+      echo "The container could not be recreated. Open it in the Docker tab, choose Edit, then Apply."
+      exit 0
+    fi
+    PORT=$(docker inspect --type container -f '{{with index .HostConfig.PortBindings "8000/tcp"}}{{(index . 0).HostPort}}{{end}}' "$NAME" 2>/dev/null)
+    [ -n "$PORT" ] || PORT=$FIRST_PORT
+    RECREATED=1
   else
     echo
     echo "A container named $NAME that this plugin did not create already exists, so it was left as it is."
@@ -473,6 +490,7 @@ if docker inspect --type container "$NAME" >/dev/null 2>&1; then
   fi
 fi
 
+if [ "$RECREATED" != 1 ]; then
 port_free() { ! ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "[:.]$1\$"; }
 if [ -z "$PORT" ]; then
   PORT=$FIRST_PORT
@@ -501,6 +519,7 @@ if ! docker run -d --name "$NAME" --restart unless-stopped $RUNTIME \
     "$IMAGE" >/dev/null; then
   echo "The container could not be started. Run psv-setup again, or add it from the Docker tab."
   exit 1
+fi
 fi
 
 HEALTH=""
@@ -545,7 +564,9 @@ FLASH="${FLASH:-/boot}"
 
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   if docker inspect --type container "$NAME" >/dev/null 2>&1; then
-    if [ "$(docker inspect --type container -f '{{index .Config.Labels "psv.plugin"}}' "$NAME" 2>/dev/null)" = "1" ]; then
+    # ours: created by this plugin, or made from its Docker tab template with its image
+    if [ "$(docker inspect --type container -f '{{index .Config.Labels "psv.plugin"}}' "$NAME" 2>/dev/null)" = "1" ] \
+        || [ "$(docker inspect --type container -f '{{.Config.Image}}' "$NAME" 2>/dev/null)" = "$NAME:latest" ]; then
       docker rm -f "$NAME" >/dev/null 2>&1 && echo "Removed the container."
     else
       echo "Left the container $NAME alone because this plugin did not create it."
