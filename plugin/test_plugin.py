@@ -27,7 +27,7 @@ case "$cmd" in
   build)
     label=""; ctx=""
     while [ $# -gt 0 ]; do
-      case "$1" in --label) label="${2#psv.version=}"; shift 2;; -t) shift 2;; *) ctx="$1"; shift;; esac
+      case "$1" in --label) label="${2#psv.version=}"; shift 2;; --build-arg) echo "$2" >> "$S/build_args"; shift 2;; -t) shift 2;; *) ctx="$1"; shift;; esac
     done
     if [ ! -f "$ctx/Dockerfile" ] || [ ! -f "$ctx/app/main.py" ] || [ ! -f "$ctx/unraid-template.xml" ]; then echo "stub: bad build context $ctx"; exit 1; fi
     [ -f "$S/build_fails" ] && { echo "stub: build failed"; exit 1; }
@@ -171,6 +171,7 @@ code, out = run_plg(plg1)
 run = (STATE / "run_args").read_text() if (STATE / "run_args").exists() else ""
 check("1 fresh install exits 0", code == 0, out[-300:])
 check("1 image built with version label", (STATE / "image_version").read_text().strip() == "2026.11.21")
+check("1 build label passed to the image build", (STATE / "build_args").read_text().strip() == "PSV_BUILD=2026.11.21")
 check("1 container uses nvidia runtime and port 8095", "--runtime=nvidia" in run and "-p 8095:8000" in run, run)
 check("1 plugin labels set", "psv.plugin=1" in run and "net.unraid.docker.managed=dockerman" in run)
 check("1 template written with port 8095", TPL.exists() and ">8095</Config>" in TPL.read_text())

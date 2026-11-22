@@ -21,6 +21,10 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 WORKDIR /srv
 COPY app ./app
 
+# Build label, set by the plugin. Kept apart from the public app name.
+ARG PSV_BUILD=dev
+ENV PSV_BUILD=$PSV_BUILD
+
 VOLUME ["/data"]
 EXPOSE 8000
 

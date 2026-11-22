@@ -28,6 +28,8 @@ JOBS_DIR = DATA / "jobs"
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "4096"))
 MAX_LENGTH = int(os.getenv("MAX_LENGTH_SECONDS", "3600"))
 RETENTION_H = float(os.getenv("RETENTION_HOURS", "12"))
+APP_NAME = "Photo and Song Video Maker"     # public name, shown to people
+BUILD = os.getenv("PSV_BUILD", "dev")         # build label, set when the image is built
 MAX_PICTURES = int(os.getenv("MAX_PICTURES", "60"))
 ENCODER_PREF = os.getenv("ENCODER", "auto").lower()  # auto | nvenc | cpu
 CONCURRENCY = max(1, int(os.getenv("MAX_CONCURRENT_JOBS", "1")))
@@ -293,7 +295,7 @@ async def lifespan(_app):
     task.cancel()
 
 
-app = FastAPI(title="Photo and Song Video Maker", lifespan=lifespan)
+app = FastAPI(title=APP_NAME, version=BUILD, lifespan=lifespan)
 app.state.encoder, app.state.gpu = "cpu", None
 
 
@@ -313,7 +315,7 @@ async def limit_upload(request: Request, call_next):
 # ------------------------------------------------------------------ API
 @app.get("/api/health")
 def health():
-    return {"encoder": app.state.encoder, "gpu": app.state.gpu,
+    return {"name": APP_NAME, "build": BUILD, "encoder": app.state.encoder, "gpu": app.state.gpu,
             "max_upload_mb": MAX_UPLOAD_MB, "max_length_seconds": MAX_LENGTH}
 
 

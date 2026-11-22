@@ -3,6 +3,10 @@
 Newest first. Each release is one plugin version. The Plugins page in Unraid shows this list too.
 Add the new entry at the top before building the plugin file with `plugin/make_plg.py`.
 
+## 2026.11.21f
+- The public app name and the build label are now kept apart. The page shows the name as its heading and the build label only in a small line at the bottom. `/api/health` reports both, and the image carries the label.
+- Install messages read "Photo and Song Video Maker (build ...)".
+
 ## 2026.11.21e
 - Several pictures make a slideshow. Reorder, rotate or remove them, set seconds per picture, and choose crossfade, slide or hard cut.
 - Zoom and pan are now clearly visible (16 percent instead of 12 percent over the whole song) and keep moving back and forth on long pictures.

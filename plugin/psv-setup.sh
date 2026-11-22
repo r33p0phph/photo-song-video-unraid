@@ -22,11 +22,11 @@ fi
 
 CUR=$(docker image inspect -f '{{index .Config.Labels "psv.version"}}' "$IMAGE" 2>/dev/null)
 if [ "$CUR" = "$VERSION" ] && [ "$FORCE" != 1 ]; then
-  echo "Photo and Song Video Maker $VERSION is already set up."
+  echo "Photo and Song Video Maker (build $VERSION) is already set up."
   exit 0
 fi
 
-echo "Setting up Photo and Song Video Maker $VERSION"
+echo "Setting up Photo and Song Video Maker (build $VERSION)"
 
 if [ ! -d "$APPDATA" ]; then
   echo "The folder $APPDATA was not found. Check that Docker is set up with an appdata share."
@@ -51,7 +51,7 @@ fi
 
 echo
 echo "Building the image. This downloads ffmpeg and Python packages, so the first build takes several minutes."
-if ! docker build --label "psv.version=$VERSION" -t "$IMAGE" "$SRC"; then
+if ! docker build --build-arg "PSV_BUILD=$VERSION" --label "psv.version=$VERSION" -t "$IMAGE" "$SRC"; then
   echo
   echo "The image build failed. Check that the server can reach the internet, then run psv-setup again."
   exit 1

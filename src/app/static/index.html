@@ -109,6 +109,7 @@ button{font:inherit;cursor:pointer}
 .ghost{background:transparent;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px 14px;min-height:44px}
 .link{justify-self:start;background:none;border:0;color:var(--muted);text-decoration:underline;padding:6px 0;min-height:36px}
 
+.foot{grid-column:1 / -1;color:var(--muted);font-size:.8rem;text-align:center;padding-top:4px}
 .makebar{position:sticky;bottom:0;background:var(--bg);padding:12px 0 calc(12px + env(safe-area-inset-bottom));display:grid;gap:6px;border-top:1px solid var(--line)}
 </style>
 </head>
@@ -219,6 +220,7 @@ button{font:inherit;cursor:pointer}
       <p id="estimate" class="meta">Add a picture or video to begin.</p>
     </div>
   </section>
+  <footer class="foot" id="foot" hidden></footer>
 </main>
 
 <script>
@@ -242,6 +244,7 @@ button{font:inherit;cursor:pointer}
   /* ---------- encoder badge ---------- */
   fetch('api/health').then((r) => r.json()).then((h) => {
     const el = $('enc');
+    if (h.build) { $('foot').textContent = 'Build ' + h.build; $('foot').hidden = false; }
     if (h.encoder === 'nvenc') { el.classList.add('gpu'); $('encText').textContent = 'Rendering on ' + (h.gpu || 'the NVIDIA GPU') + ' (NVENC)'; }
     else { $('encText').textContent = 'No GPU encoder found, rendering on the CPU'; }
   }).catch(() => { $('encText').textContent = 'Server not reachable'; });
