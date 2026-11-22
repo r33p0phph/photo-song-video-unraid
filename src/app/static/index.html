@@ -87,6 +87,15 @@ body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16p
 .sr:focus-visible + .drop{outline:3px solid var(--focus);outline-offset:2px}
 .sr:disabled + .drop{opacity:.55;cursor:not-allowed}
 
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.thumb{position:relative;border:1px solid var(--line);border-radius:10px;background:var(--soft);overflow:hidden;min-width:0}
+.thumb .im{aspect-ratio:1;display:grid;place-items:center;overflow:hidden;background:var(--stage);color:#aeb5c8;font-size:.75rem;text-align:center;padding:4px;word-break:break-all}
+.thumb img{display:block;max-width:100%;max-height:100%;object-fit:contain}
+.thumb .num{position:absolute;top:5px;left:5px;background:rgba(0,0,0,.65);color:#fff;border-radius:99px;font-size:.75rem;padding:1px 7px;font-variant-numeric:tabular-nums}
+.thumb .tools{display:grid;grid-template-columns:repeat(4,1fr)}
+.thumb .tools button{min-height:40px;border:0;border-top:1px solid var(--line);background:transparent;color:var(--ink);font-size:1.05rem;padding:0}
+.thumb .tools button + button{border-left:1px solid var(--line)}
+.thumb .tools button:disabled{opacity:.3;cursor:not-allowed}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .field{display:grid;gap:6px;font-size:.9rem;color:var(--muted);font-weight:500;min-width:0}
 .field input,.field select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px;width:100%;min-width:0}
@@ -107,12 +116,12 @@ button{font:inherit;cursor:pointer}
 <main class="app">
   <header class="top">
     <h1>Photo and Song Video Maker</h1>
-    <p>Pick a picture or a clip, add a song, and get one video back. Your files go to this server only and are deleted after a while.</p>
+    <p>Pick one or more pictures, or a clip, add a song, and get one video back. Your files go to this server only and are deleted after a while.</p>
     <span class="enc" id="enc"><i></i><span id="encText">Checking the encoder…</span></span>
   </header>
 
   <section class="stage-col" aria-label="Preview and result">
-    <div class="stage" id="stage"><div class="empty" id="stageEmpty">Your picture or video shows up here</div></div>
+    <div class="stage" id="stage"><div class="empty" id="stageEmpty">Your pictures or video show up here</div></div>
 
     <div class="progress" id="progress" hidden>
       <div class="bar" id="bar"><i id="barFill"></i></div>
@@ -134,12 +143,14 @@ button{font:inherit;cursor:pointer}
 
   <section class="controls" aria-label="Settings">
     <section class="step">
-      <h2><span class="n">1</span>Picture or video</h2>
-      <input type="file" id="visualFile" class="sr" accept="image/*,video/*">
+      <h2><span class="n">1</span>Pictures or video</h2>
+      <input type="file" id="visualFile" class="sr" accept="image/*,video/*" multiple>
       <label class="drop" for="visualFile" id="visualDrop">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.8"/><path d="M4 17l5-5 4 4 3-3 4 4"/></svg>
-        <span class="dt"><strong id="visualTitle">Choose a picture or video</strong><small id="visualMeta">JPG, PNG, HEIC, MP4 or MOV. You can also drop a file here.</small></span>
+        <span class="dt"><strong id="visualTitle">Choose pictures or a video</strong><small id="visualMeta">JPG, PNG, HEIC, MP4 or MOV. Pick several pictures for a slideshow.</small></span>
       </label>
+      <div class="thumbs" id="thumbs" hidden></div>
+      <button type="button" id="clearVisual" class="link" hidden>Remove all</button>
     </section>
 
     <section class="step">
@@ -186,7 +197,19 @@ button{font:inherit;cursor:pointer}
           <option value="fill">Fill the frame, crop the edges</option>
         </select>
       </label>
-      <label class="check" for="zoom"><input type="checkbox" id="zoom" checked><span>Slow zoom on pictures</span></label>
+      <div class="grid2" id="slideOpts" hidden>
+        <label class="field" for="perSec">Seconds per picture
+          <input type="number" id="perSec" min="2" step="any" placeholder="Automatic" inputmode="decimal">
+        </label>
+        <label class="field" for="trans">Between pictures
+          <select id="trans">
+            <option value="fade">Crossfade</option>
+            <option value="slide">Slide</option>
+            <option value="cut">Hard cut</option>
+          </select>
+        </label>
+      </div>
+      <label class="check" for="zoom"><input type="checkbox" id="zoom" checked><span>Zoom and pan on pictures</span></label>
       <label class="check" for="fade"><input type="checkbox" id="fade" checked><span>Fade in and out</span></label>
       <label class="check" for="bars"><input type="checkbox" id="bars"><span>Music bars along the bottom</span></label>
     </section>
@@ -202,7 +225,7 @@ button{font:inherit;cursor:pointer}
 (function () {
   'use strict';
   const $ = (id) => document.getElementById(id);
-  const S = { visual: null, audio: null, v: null, a: null, vUrl: null, jobId: null, timer: null, busy: false, lenTouched: false };
+  const S = { visual: null, items: [], vOwn: false, audio: null, v: null, a: null, vUrl: null, jobId: null, timer: null, busy: false, lenTouched: false };
 
   function fmtTime(s) {
     if (!isFinite(s) || s < 0) s = 0;
@@ -240,7 +263,7 @@ button{font:inherit;cursor:pointer}
     const st = $('stage');
     st.innerHTML = '';
     if (!S.visual) {
-      st.innerHTML = '<div class="empty" id="stageEmpty">Your picture or video shows up here</div>';
+      st.innerHTML = '<div class="empty" id="stageEmpty">Your pictures or video show up here</div>';
       renderStage();
       return;
     }
@@ -269,30 +292,141 @@ button{font:inherit;cursor:pointer}
   }
 
   /* ---------- choosing files ---------- */
-  function setVisual(f) {
-    if (!f || S.busy) return;
-    if (S.vUrl) URL.revokeObjectURL(S.vUrl);
+  const IMG_EXT = /\.(jpe?g|png|webp|gif|bmp|heic|heif|avif|tiff?)$/i;
+  function isImageFile(f) { return f.type.indexOf('image/') === 0 || IMG_EXT.test(f.name); }
+  const MAX_PICTURES = 60;
+
+  function loadImage(url) {
+    return new Promise(function (res) {
+      const im = new Image();
+      im.onload = function () { res(im); };
+      im.onerror = function () { res(null); };
+      im.src = url;
+    });
+  }
+  // A small copy of the picture with its rotation applied, as an object URL (used for thumbnails and the preview).
+  function rotatedUrl(it, maxSide, old) {
+    return new Promise(function (res) {
+      const r = it.rot % 360, sc = Math.min(1, maxSide / Math.max(it.w, it.h));
+      const dw = Math.max(1, Math.round(it.w * sc)), dh = Math.max(1, Math.round(it.h * sc));
+      const swap = r === 90 || r === 270;
+      const c = document.createElement('canvas');
+      c.width = swap ? dh : dw; c.height = swap ? dw : dh;
+      const g = c.getContext('2d');
+      g.translate(c.width / 2, c.height / 2);
+      g.rotate(r * Math.PI / 180);
+      g.drawImage(it.img, -dw / 2, -dh / 2, dw, dh);
+      c.toBlob(function (b) {
+        if (old) URL.revokeObjectURL(old);
+        res(b ? URL.createObjectURL(b) : null);
+      }, 'image/jpeg', 0.88);
+    });
+  }
+  async function paintItem(it, withView) {
+    if (it.img === undefined) {
+      it.img = await loadImage(it.url);
+      if (it.img) { it.w = it.img.naturalWidth; it.h = it.img.naturalHeight; }
+    }
+    if (!it.img) { it.thumb = null; it.view = null; return; }
+    it.thumb = await rotatedUrl(it, 260, it.thumb);
+    if (withView) it.view = await rotatedUrl(it, 1400, it.view);
+  }
+  function dropItemUrls(it) {
+    [it.url, it.thumb, it.view].forEach(function (u) { if (u) URL.revokeObjectURL(u); });
+  }
+  function clearVisual() {
+    S.items.forEach(dropItemUrls);
+    S.items = [];
+    if (S.vUrl && S.vOwn) URL.revokeObjectURL(S.vUrl);
+    S.visual = null; S.v = null; S.vUrl = null; S.vOwn = false;
+  }
+
+  function setVideo(f) {
+    clearVisual();
     S.visual = f;
     S.vUrl = URL.createObjectURL(f);
+    S.vOwn = true;
     S.lenTouched = false;
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    // Ignore a late answer if something else was chosen in the meantime.
+    v.onloadedmetadata = function () {
+      if (S.visual !== f) return;
+      S.v = { kind: 'video', w: v.videoWidth, h: v.videoHeight, dur: v.duration };
+      afterVisual();
+    };
+    v.onerror = function () { if (S.visual !== f) return; S.v = { kind: 'video', w: 0, h: 0, dur: NaN }; afterVisual(); };
+    v.src = S.vUrl;
+  }
+
+  async function addFiles(files) {
+    if (S.busy || !files || !files.length) return;
     setStatus('');
     resetResult();
-    if (isVideoFile(f)) {
-      const v = document.createElement('video');
-      v.preload = 'metadata';
-      v.onloadedmetadata = function () {
-        S.v = { kind: 'video', w: v.videoWidth, h: v.videoHeight, dur: v.duration };
-        afterVisual();
-      };
-      v.onerror = function () { S.v = { kind: 'video', w: 0, h: 0, dur: NaN }; afterVisual(); };
-      v.src = S.vUrl;
-    } else {
-      const img = new Image();
-      img.onload = function () { S.v = { kind: 'image', w: img.naturalWidth, h: img.naturalHeight, dur: NaN }; afterVisual(); };
-      img.onerror = function () { S.v = { kind: 'image', w: 0, h: 0, dur: NaN }; afterVisual(); };
-      img.src = S.vUrl;
-    }
+    const list = Array.prototype.slice.call(files);
+    if (isVideoFile(list[0])) { setVideo(list[0]); return; }
+    const pics = list.filter(isImageFile);
+    if (!pics.length) { setStatus('Choose pictures (JPG, PNG, HEIC) or one video.', true); return; }
+    if (S.v && S.v.kind === 'video') clearVisual();
+    const room = MAX_PICTURES - S.items.length;
+    if (pics.length > room) setStatus('Up to ' + MAX_PICTURES + ' pictures. The extra ones were skipped.', true);
+    const fresh = pics.slice(0, Math.max(0, room)).map(function (f) { return { file: f, url: URL.createObjectURL(f), rot: 0 }; });
+    S.items = S.items.concat(fresh);
+    renderThumbs();                      // show the new pictures at once, previews follow
+    await refreshPictures(fresh);
   }
+
+  // Pictures changed: redo previews, keep the first picture as the stage and shape reference.
+  async function refreshPictures(fresh) {
+    await Promise.all((fresh || []).map(function (it) { return paintItem(it, false); }));
+    const first = S.items[0];
+    if (!first) { clearVisual(); afterVisual(); return; }
+    await paintItem(first, true);
+    S.visual = first.file;
+    S.vOwn = false;
+    S.vUrl = first.view || first.url;
+    const swap = first.rot === 90 || first.rot === 270;
+    S.v = { kind: 'image', w: first.img ? (swap ? first.h : first.w) : 0, h: first.img ? (swap ? first.w : first.h) : 0, dur: NaN };
+    S.lenTouched = false;
+    afterVisual();
+  }
+
+  function renderThumbs() {
+    const box = $('thumbs');
+    box.innerHTML = '';
+    box.hidden = !S.items.length;
+    S.items.forEach(function (it, i) {
+      const d = document.createElement('div');
+      d.className = 'thumb';
+      d.dataset.i = i;
+      const num = document.createElement('span'); num.className = 'num'; num.textContent = String(i + 1);
+      const im = document.createElement('div'); im.className = 'im';
+      if (it.thumb) { const img = document.createElement('img'); img.alt = it.file.name; img.src = it.thumb; im.appendChild(img); }
+      else { im.textContent = it.file.name; }
+      const tools = document.createElement('div'); tools.className = 'tools';
+      [['left', '←', 'Move earlier', i === 0], ['right', '→', 'Move later', i === S.items.length - 1],
+       ['rot', '↻', 'Rotate a quarter turn', false], ['del', '✕', 'Remove', false]].forEach(function (b) {
+        const el = document.createElement('button');
+        el.type = 'button'; el.dataset.act = b[0]; el.textContent = b[1]; el.title = b[2]; el.setAttribute('aria-label', b[2] + ', picture ' + (i + 1));
+        el.disabled = b[3] || S.busy;
+        tools.appendChild(el);
+      });
+      d.appendChild(im); d.appendChild(num); d.appendChild(tools);
+      box.appendChild(d);
+    });
+  }
+
+  async function thumbAction(act, i) {
+    if (S.busy || !S.items[i]) return;
+    const it = S.items[i];
+    if (act === 'left' && i > 0) { S.items.splice(i - 1, 2, S.items[i], S.items[i - 1]); }
+    else if (act === 'right' && i < S.items.length - 1) { S.items.splice(i, 2, S.items[i + 1], S.items[i]); }
+    else if (act === 'rot') { it.rot = (it.rot + 90) % 360; await paintItem(it, i === 0); }
+    else if (act === 'del') { dropItemUrls(it); S.items.splice(i, 1); }
+    else { return; }
+    await refreshPictures([]);
+  }
+
   function afterVisual() { setDefaultLength(); buildStage(); updateUI(); }
 
   function setAudio(f) {
@@ -321,18 +455,24 @@ button{font:inherit;cursor:pointer}
     let len = 10;
     if (S.a && isFinite(S.a.dur)) len = Math.max(1, S.a.dur - Math.max(0, num('startAt', 0)));
     else if (S.v && S.v.kind === 'video' && isFinite(S.v.dur)) len = S.v.dur;
+    else if (S.items.length > 1) len = S.items.length * 4;
     $('lenSec').value = Math.round(len * 10) / 10;
   }
 
   function updateUI() {
     const f = S.visual, v = S.v, a = S.audio;
     $('visualDrop').classList.toggle('has', !!f);
-    $('visualTitle').textContent = f ? f.name : 'Choose a picture or video';
+    const many = S.items.length > 1;
+    $('visualTitle').textContent = !f ? 'Choose pictures or a video' : (many ? S.items.length + ' pictures' : f.name);
     $('visualMeta').textContent = f
       ? (v && v.kind === 'video'
           ? 'Video' + (v.w ? ', ' + v.w + '×' + v.h : '') + (isFinite(v.dur) ? ', ' + fmtTime(v.dur) : '') + '. Tap to change.'
-          : 'Picture' + (v && v.w ? ', ' + v.w + '×' + v.h : '') + '. Tap to change.')
-      : 'JPG, PNG, HEIC, MP4 or MOV. You can also drop a file here.';
+          : (many ? 'Tap to add more. Reorder, rotate or remove them below.'
+                  : 'Picture' + (v && v.w ? ', ' + v.w + '×' + v.h : '') + '. Tap to add more for a slideshow.'))
+      : 'JPG, PNG, HEIC, MP4 or MOV. Pick several pictures for a slideshow.';
+    $('clearVisual').hidden = !f;
+    $('slideOpts').hidden = !many;
+    renderThumbs();
     $('audioDrop').classList.toggle('has', !!a);
     $('audioTitle').textContent = a ? a.name : 'Choose a song or a video';
     $('audioMeta').textContent = a
@@ -351,9 +491,10 @@ button{font:inherit;cursor:pointer}
   /* ---------- running a job ---------- */
   function setBusy(b) {
     S.busy = b;
-    ['visualFile', 'audioFile', 'startAt', 'lenSec', 'keepSound', 'removeSong', 'format', 'quality', 'fit', 'zoom', 'fade', 'bars', 'makeBtn']
+    ['visualFile', 'audioFile', 'startAt', 'lenSec', 'keepSound', 'removeSong', 'clearVisual', 'perSec', 'trans', 'format', 'quality', 'fit', 'zoom', 'fade', 'bars', 'makeBtn']
       .forEach(function (id) { $(id).disabled = b; });
     $('progress').hidden = !b;
+    renderThumbs();
     if (!b) updateUI();
   }
   function showProgress(text, frac) {
@@ -372,7 +513,14 @@ button{font:inherit;cursor:pointer}
   function submit() {
     if (S.busy || !S.visual) return;
     const fd = new FormData();
-    fd.append('visual', S.visual, S.visual.name);
+    if (S.items.length) {
+      S.items.forEach(function (it) { fd.append('visual', it.file, it.file.name); });
+      fd.append('rotations', S.items.map(function (it) { return it.rot; }).join(','));
+      fd.append('per', String(S.items.length > 1 ? num('perSec', 0) : 0));
+      fd.append('trans', $('trans').value);
+    } else {
+      fd.append('visual', S.visual, S.visual.name);
+    }
     if (S.audio) fd.append('audio', S.audio, S.audio.name);
     fd.append('fmt', $('format').value);
     fd.append('quality', $('quality').value);
@@ -452,16 +600,26 @@ button{font:inherit;cursor:pointer}
   }
 
   /* ---------- wiring ---------- */
-  $('visualFile').addEventListener('change', (e) => { setVisual(e.target.files[0]); e.target.value = ''; });
+  $('visualFile').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
   $('audioFile').addEventListener('change', (e) => { setAudio(e.target.files[0]); e.target.value = ''; });
   function dropTarget(el, handler) {
     ['dragenter', 'dragover'].forEach((ev) => el.addEventListener(ev, (e) => { e.preventDefault(); el.classList.add('over'); }));
     ['dragleave', 'drop'].forEach((ev) => el.addEventListener(ev, (e) => { e.preventDefault(); el.classList.remove('over'); }));
-    el.addEventListener('drop', (e) => { const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) handler(f); });
+    el.addEventListener('drop', (e) => { const fs = e.dataTransfer && e.dataTransfer.files; if (fs && fs.length) handler(fs); });
   }
-  dropTarget($('visualDrop'), setVisual);
-  dropTarget($('audioDrop'), setAudio);
+  dropTarget($('visualDrop'), addFiles);
+  dropTarget($('audioDrop'), (fs) => setAudio(fs[0]));
 
+  $('thumbs').addEventListener('click', function (e) {
+    const b = e.target.closest('button[data-act]');
+    const t = e.target.closest('.thumb');
+    if (b && t) thumbAction(b.dataset.act, parseInt(t.dataset.i, 10));
+  });
+  $('clearVisual').addEventListener('click', function () {
+    if (S.busy) return;
+    clearVisual(); resetResult(); setStatus('');
+    S.lenTouched = false; afterVisual();
+  });
   $('removeSong').addEventListener('click', function () {
     S.audio = null; S.a = null; S.lenTouched = false; $('startAt').value = 0;
     setDefaultLength(); updateUI();
@@ -469,7 +627,7 @@ button{font:inherit;cursor:pointer}
   $('startAt').addEventListener('input', function () { setDefaultLength(); updateUI(); });
   $('lenSec').addEventListener('input', function () { S.lenTouched = true; updateUI(); });
   ['format', 'fit'].forEach((id) => $(id).addEventListener('change', renderStage));
-  ['format', 'quality', 'fit', 'zoom', 'fade', 'bars', 'keepSound'].forEach((id) => $(id).addEventListener('change', updateUI));
+  ['format', 'quality', 'fit', 'zoom', 'fade', 'bars', 'keepSound', 'perSec', 'trans'].forEach((id) => $(id).addEventListener('change', updateUI));
 
   $('makeBtn').addEventListener('click', submit);
   $('cancelBtn').addEventListener('click', function () {

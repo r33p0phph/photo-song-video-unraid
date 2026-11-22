@@ -28,6 +28,7 @@ JOBS_DIR = DATA / "jobs"
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "4096"))
 MAX_LENGTH = int(os.getenv("MAX_LENGTH_SECONDS", "3600"))
 RETENTION_H = float(os.getenv("RETENTION_HOURS", "12"))
+MAX_PICTURES = int(os.getenv("MAX_PICTURES", "60"))
 ENCODER_PREF = os.getenv("ENCODER", "auto").lower()  # auto | nvenc | cpu
 CONCURRENCY = max(1, int(os.getenv("MAX_CONCURRENT_JOBS", "1")))
 
@@ -116,15 +117,23 @@ async def detect_encoder():
 def prepare(job):
     """Probe and clean the uploaded files, then work out the final settings. Runs in a thread."""
     s = job.settings
-    vis_up = job.dir / "visual.upload"
+    vis_ups = sorted(job.dir.glob("visual*.upload"))
     aud_up = job.dir / "audio.upload"
+    rots = s.get("rotations") or []
 
+    pics = []
+    kind, vis_path, vinfo = "image", None, None
     try:
-        w, h = render.normalise_image(vis_up, job.dir / "visual.png")
-        kind, vis_path, vinfo = "image", job.dir / "visual.png", {"w": w, "h": h, "duration": 0, "has_audio": False}
+        for i, up in enumerate(vis_ups):
+            w, h = render.normalise_image(up, job.dir / ("pic%03d.png" % i), rotate=rots[i] if i < len(rots) else 0)
+            pics.append(str(job.dir / ("pic%03d.png" % i)))
+            if vinfo is None:  # the first picture decides the shape when "same as the picture" is chosen
+                vinfo = {"w": w, "h": h, "duration": 0, "has_audio": False}
     except render.NotAnImage:
-        vinfo = render.video_info(render.probe(vis_up))
-        kind, vis_path = "video", vis_up
+        if len(vis_ups) > 1:
+            raise render.InputError("When you add several files, they all need to be pictures. A video has to be used on its own.")
+        vinfo = render.video_info(render.probe(vis_ups[0]))
+        kind, vis_path, pics = "video", vis_ups[0], []
 
     ainfo, aud_path = None, None
     if aud_up.exists():
@@ -148,7 +157,9 @@ def prepare(job):
 
     W, H = render.out_size(s["fmt"], s["quality"], vinfo["w"], vinfo["h"])
     job.opts = {
-        "kind": kind, "visual": str(vis_path), "audio": str(aud_path) if aud_path else None,
+        "kind": kind, "visual": str(vis_path) if vis_path else None, "pictures": pics,
+        "per": s.get("per", 0.0), "trans": s.get("trans", "fade"),
+        "audio": str(aud_path) if aud_path else None,
         "W": W, "H": H, "D": D, "start": start, "fit": s["fit"], "zoom": s["zoom"],
         "fade": s["fade"], "bars": s["bars"], "keep": s["keep_sound"],
         "vis_has_audio": vinfo["has_audio"],
@@ -247,7 +258,7 @@ async def process(job):
         job.status, job.error, job.stage = "error", str(e) or "Something went wrong while rendering.", "Failed"
     finally:
         job.finished = time.time()
-        for name in ("visual.upload", "audio.upload", "visual.png"):
+        for name in ["audio.upload"] + [p.name for p in job.dir.glob("visual*.upload")] + [p.name for p in job.dir.glob("pic*.png")]:
             try:
                 (job.dir / name).unlink()
             except OSError:
@@ -315,8 +326,11 @@ async def save_upload(upload: UploadFile, dest: Path):
 
 @app.post("/api/jobs")
 async def create_job(
-    visual: UploadFile = File(...),
+    visual: list[UploadFile] = File(...),
     audio: UploadFile | None = File(None),
+    rotations: str = Form(""),
+    per: float = Form(0.0),
+    trans: str = Form("fade"),
     fmt: str = Form("source"),
     quality: int = Form(1080),
     fit: str = Form("fit"),
@@ -333,22 +347,34 @@ async def create_job(
         raise HTTPException(400, "Unknown quality.")
     if fit not in ("fit", "fill"):
         raise HTTPException(400, "Unknown placement.")
+    if trans not in ("fade", "slide", "cut"):
+        raise HTTPException(400, "Unknown transition.")
+    if not visual or len(visual) > MAX_PICTURES:
+        raise HTTPException(400, "Add between 1 and %d pictures." % MAX_PICTURES)
+    try:
+        rots = [int(float(x)) % 360 for x in rotations.split(",") if x.strip() != ""]
+    except ValueError:
+        raise HTTPException(400, "Unknown rotation.")
+    if any(r not in (0, 90, 180, 270) for r in rots):
+        raise HTTPException(400, "Unknown rotation.")
     settings = {
         "fmt": fmt, "quality": quality, "fit": fit, "zoom": zoom, "fade": fade, "bars": bars,
         "keep_sound": keep_sound, "start": max(0.0, min(start, 86400.0)),
         "length": max(0.0, min(length, float(MAX_LENGTH))),
+        "rotations": rots, "per": max(0.0, min(per, 600.0)), "trans": trans,
     }
     jid = uuid.uuid4().hex[:12]
-    job = Job(jid, visual.filename or "video", settings)
+    job = Job(jid, visual[0].filename or "video", settings)
     job.dir.mkdir(parents=True)
     try:
-        await save_upload(visual, job.dir / "visual.upload")
+        for i, up in enumerate(visual):
+            await save_upload(up, job.dir / ("visual%03d.upload" % i))
+            if (job.dir / ("visual%03d.upload" % i)).stat().st_size == 0:
+                raise HTTPException(400, "The picture or video file is empty.")
         if audio is not None and audio.filename:
             await save_upload(audio, job.dir / "audio.upload")
             if (job.dir / "audio.upload").stat().st_size == 0:
                 (job.dir / "audio.upload").unlink()
-        if (job.dir / "visual.upload").stat().st_size == 0:
-            raise HTTPException(400, "The picture or video file is empty.")
     except HTTPException:
         shutil.rmtree(job.dir, ignore_errors=True)
         raise

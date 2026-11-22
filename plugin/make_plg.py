@@ -59,8 +59,11 @@ plg = f"""<?xml version='1.0' standalone='yes'?>
 
 <CHANGES>
 ###{version}
-- The song slot also takes a video and uses its sound. Damaged or cut-short photos now open instead of being refused.
-- Updating the plugin now also recreates a container that was made from the Docker tab.
+- Several pictures make a slideshow: reorder, rotate or remove them, choose seconds per picture and crossfade, slide or cut.
+- Zoom and pan are now clearly visible and keep moving on long songs.
+- The song slot also takes a video and uses its sound.
+- Damaged or cut-short photos open instead of being refused.
+- Updating the plugin also recreates a container that was made from the Docker tab.
 - Builds the app image on the server, adds it to the Docker tab and starts it. Uses the NVIDIA GPU (NVENC) when the Nvidia Driver plugin is installed, otherwise the CPU.
 </CHANGES>
 
