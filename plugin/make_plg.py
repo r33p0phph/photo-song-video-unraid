@@ -59,13 +59,15 @@ plg = f"""<?xml version='1.0' standalone='yes'?>
 
 <CHANGES>
 ###{version}
-- First release. Builds the app image on the server, adds it to the Docker tab and starts it. Uses the NVIDIA GPU (NVENC) when the Nvidia Driver plugin is installed, otherwise the CPU.
+- Fixes the container not being started on a first install, and old setup files being kept on update.
+- Builds the app image on the server, adds it to the Docker tab and starts it. Uses the NVIDIA GPU (NVENC) when the Nvidia Driver plugin is installed, otherwise the CPU.
 </CHANGES>
 
-<!-- folders -->
+<!-- folders. The two files below are removed first because Unraid keeps an inline file that already exists, which would leave an old copy behind on update -->
 <FILE Run="/bin/bash">
 <INLINE>
 mkdir -p &emhttp; &flash;
+rm -f &emhttp;/payload.b64 /usr/local/sbin/psv-setup
 </INLINE>
 </FILE>
 

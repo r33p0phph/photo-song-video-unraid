@@ -122,8 +122,10 @@ def run_plg(plg, method="install"):
         if name:
             dest = Path(mapped(name))
             dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_text(text)
-            dest.chmod(int(f.get("Mode", "0644"), 8))
+            # Unraid keeps an inline file that already exists, so model that.
+            if not dest.exists():
+                dest.write_text(text)
+                dest.chmod(int(f.get("Mode", "0644"), 8))
         if f.get("Run"):
             p = subprocess.run(["bash", "-c", mapped(text)], env=env(), capture_output=True, text=True)
             out.append(p.stdout + p.stderr)
@@ -183,6 +185,7 @@ TPL.write_text(TPL.read_text() + "<!-- user edit -->")
 code, out = run_plg(plg2)
 run = (STATE / "run_args").read_text()
 check("4 upgrade rebuilds with the new version", (STATE / "image_version").read_text().strip() == "2026.11.22", out[-300:])
+check("4 upgrade replaced the setup script", '2026.11.22' in (ROOT / "usr/local/sbin/psv-setup").read_text())
 check("4 upgrade keeps port and GPU choice", "-p 8100:8000" in run and "NVIDIA_VISIBLE_DEVICES=GPU-1234" in run, run)
 check("4 template edits are kept", "<!-- user edit -->" in TPL.read_text())
 

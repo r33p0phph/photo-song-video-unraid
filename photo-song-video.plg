@@ -1,7 +1,7 @@
 <?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
 <!ENTITY name "photo-song-video">
-<!ENTITY version "2026.11.21a">
+<!ENTITY version "2026.11.21b">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/r33p0phph/photo-song-video-unraid/main/photo-song-video.plg">
 <!ENTITY emhttp "/usr/local/emhttp/plugins/&name;">
 <!ENTITY flash "/boot/config/plugins/&name;">
@@ -9,21 +9,23 @@
 <PLUGIN name="&name;" author="Built with Claude" version="&version;" min="6.12.0" pluginURL="&pluginURL;">
 
 <CHANGES>
-###2026.11.21a
-- First release. Builds the app image on the server, adds it to the Docker tab and starts it. Uses the NVIDIA GPU (NVENC) when the Nvidia Driver plugin is installed, otherwise the CPU.
+###2026.11.21b
+- Fixes the container not being started on a first install, and old setup files being kept on update.
+- Builds the app image on the server, adds it to the Docker tab and starts it. Uses the NVIDIA GPU (NVENC) when the Nvidia Driver plugin is installed, otherwise the CPU.
 </CHANGES>
 
-<!-- folders -->
+<!-- folders. The two files below are removed first because Unraid keeps an inline file that already exists, which would leave an old copy behind on update -->
 <FILE Run="/bin/bash">
 <INLINE>
 mkdir -p &emhttp; &flash;
+rm -f &emhttp;/payload.b64 /usr/local/sbin/psv-setup
 </INLINE>
 </FILE>
 
 <!-- the app, packed as a base64 tarball -->
 <FILE Name="&emhttp;/payload.b64" Mode="0644">
 <INLINE><![CDATA[
-H4sIAD5NAmsC/+2963oTSbY22L91FVmiaUmUzj4AMnJvg03hbsAeG6ju8fYnp6WULdCplCkbb+B5
+H4sIAAZOAmsC/+2963oTSbY22L91FVmiaUmUzj4AMnJvg03hbsAeG6ju8fYnp6WULdCplCkbb+B5
 5i7mDuZG5k7mSuZ914rIjExJNlRXVe9nf6i7cGZkHFesWLFOsaLam3Q/BLPBxXgyC/70+/zq+G2u
 r8tf/LJ/6/WHzjPTG/X1xuafvPqf/oDfPIz8GZr/0/+evwcPap3O9Kbrdy+DTif3oIrnXPViEOWO
 9nZ2X+1VR73cfDzzB71KFIymQz8Kqh9Hw9yfvv/+R/x2Zfn3B8Pg92vjjvXfrK89TK//+sOH643v
@@ -389,7 +391,7 @@ pXdzWyd3akvpMn8e4KhWL/gtxsbGV49NKIOad0PEuoBLlzuqjL7BGRICLS4fUDoMb7gkqrTQITkd
 # Photo and Song Video Maker: set up the Docker image and container on Unraid.
 # Runs when the plugin is installed or updated. Safe to run again: psv-setup [--force]
 NAME=photo-song-video
-VERSION="2026.11.21a"
+VERSION="2026.11.21b"
 FLASH="${FLASH:-/boot}"
 PLUGIN_DIR="${PLUGIN_DIR:-/usr/local/emhttp/plugins/$NAME}"
 APPDATA="${APPDATA:-/mnt/user/appdata}"
