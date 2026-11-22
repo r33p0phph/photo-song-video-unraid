@@ -10,12 +10,21 @@
 
 <CHANGES>
 ###2026.11.21e
-- Several pictures make a slideshow: reorder, rotate or remove them, choose seconds per picture and crossfade, slide or cut.
-- Zoom and pan are now clearly visible and keep moving on long songs.
-- The song slot also takes a video and uses its sound.
-- Damaged or cut-short photos open instead of being refused.
-- Updating the plugin also recreates a container that was made from the Docker tab.
-- Builds the app image on the server, adds it to the Docker tab and starts it. Uses the NVIDIA GPU (NVENC) when the Nvidia Driver plugin is installed, otherwise the CPU.
+- Several pictures make a slideshow. Reorder, rotate or remove them, set seconds per picture, and choose crossfade, slide or hard cut.
+- Zoom and pan are now clearly visible (16 percent instead of 12 percent over the whole song) and keep moving back and forth on long pictures.
+###2026.11.21d
+- Updating the plugin also recreates a container that was made from the Docker tab, keeping all its settings, so a new image is always picked up.
+- Removing the plugin also removes a container made from the Docker tab.
+###2026.11.21c
+- The song slot also takes a video and uses only its sound.
+- Damaged or cut-short photos open instead of being refused. ffmpeg is a second decoder for pictures the first one cannot read.
+- Files the app rejects are written to the container log, with the reason.
+###2026.11.21b
+- Fixed updates running the old setup script, because Unraid keeps an inline file that already exists. The two inline files are now removed before each install.
+###2026.11.21a
+- Fixed the first install not starting the container. The installer mistook the freshly built image for an existing container of the same name.
+###2026.11.21
+- First release. Builds the app image on the server, adds it to the Docker tab and starts it. Uses the NVIDIA GPU (NVENC) when the Nvidia Driver plugin is installed, otherwise the CPU.
 </CHANGES>
 
 <!-- folders. The two files below are removed first because Unraid keeps an inline file that already exists, which would leave an old copy behind on update -->
@@ -29,7 +38,7 @@ rm -f &emhttp;/payload.b64 /usr/local/sbin/psv-setup
 <!-- the app, packed as a base64 tarball -->
 <FILE Name="&emhttp;/payload.b64" Mode="0644">
 <INLINE><![CDATA[
-H4sIAOpUAmsC/+29y3YbSbYlGGN8hQeUugAUAAjwJQkUGJcSqRAz9WCTlOJm8bIhJ+AgEQIBJBwg
+H4sIANFWAmsC/+29y3YbSbYlGGN8hQeUugAUAAjwJQkUGJcSqRAz9WCTlOJm8bIhJ+AgEQIBJBwg
 xZS0Vo1q3KvX6tWTHvdP9LD/pL6k9z7HzN3M4aCozIi41XWDmSH4w9wex44dO2+r98bdD9F0cD4a
 T6Pvfpu/Bv4219flF3/Z30bjoXPN583GenPzu6Dx3e/wN49n4RTNf/ef8+/Bg5VOZ3LTDbsXUadT
 eFDHdaF+PpgVDvd2dl/t1S97hfloGg56tVl0ORmGs6j+8XJY+O6Pv/8p/nZl+fcHw+i3a+Mr63+1

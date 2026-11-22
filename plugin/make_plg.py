@@ -8,6 +8,7 @@ import io
 import os
 import sys
 import tarfile
+from xml.sax.saxutils import escape
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -39,6 +40,26 @@ setup = (HERE / "psv-setup.sh").read_text().replace("@VERSION@", version)
 remove = (HERE / "psv-remove.sh").read_text()
 data = payload()
 
+
+def changes_block() -> str:
+    """CHANGELOG.md (newest first, '## version' headings) in the format Unraid's Plugins page shows."""
+    path = HERE.parent / "CHANGELOG.md"
+    if not path.exists():
+        return "###%s\n- No notes." % version
+    out, first = [], None
+    for line in path.read_text().splitlines():
+        if line.startswith("## "):
+            first = first or line[3:].strip()
+            out.append("###" + line[3:].strip())
+        elif line.startswith("- "):
+            out.append(line)
+    if first != version:
+        print("note: the top CHANGELOG.md entry is %s, not %s" % (first, version), file=sys.stderr)
+    return escape("\n".join(out))
+
+
+changes = changes_block()
+
 for label, text in (("setup", setup), ("remove", remove), ("payload", data)):
     if "]]>" in text:
         sys.exit("cannot embed %s: contains ]]>" % label)
@@ -58,13 +79,7 @@ plg = f"""<?xml version='1.0' standalone='yes'?>
 <PLUGIN {plugin_attrs}>
 
 <CHANGES>
-###{version}
-- Several pictures make a slideshow: reorder, rotate or remove them, choose seconds per picture and crossfade, slide or cut.
-- Zoom and pan are now clearly visible and keep moving on long songs.
-- The song slot also takes a video and uses its sound.
-- Damaged or cut-short photos open instead of being refused.
-- Updating the plugin also recreates a container that was made from the Docker tab.
-- Builds the app image on the server, adds it to the Docker tab and starts it. Uses the NVIDIA GPU (NVENC) when the Nvidia Driver plugin is installed, otherwise the CPU.
+{changes}
 </CHANGES>
 
 <!-- folders. The two files below are removed first because Unraid keeps an inline file that already exists, which would leave an old copy behind on update -->
