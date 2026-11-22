@@ -174,26 +174,47 @@ def out_size(fmt: str, quality: int, sw: int, sh: int):
 
 
 # ---------------------------------------------------------------- ffmpeg command
-MAX_SEGMENTS = 60
+MAX_SEGMENTS = 300     # more cuts than this use too much memory, so they are merged
+XFADE_MAX = 60         # a longer chain of transitions falls back to hard cuts
 MOTION = 0.16          # how far the picture zooms or pans: 16 percent
 LONG_SEGMENT = 20.0    # a picture shown longer than this keeps moving back and forth
 CYCLE_SECONDS = 16.0
+AUTO_CUT = (2.0, 4.0)  # automatic cut length is the song split evenly, kept between these seconds
+
+TRANSITIONS = {"fade": "fade", "slide": "slideleft", "wipe": "wipeleft", "zoom": "zoomin",
+               "circle": "circleopen", "dissolve": "dissolve", "flash": "fadewhite"}
+MIX_ORDER = ["fade", "slideleft", "wipeleft", "circleopen", "dissolve", "zoomin", "slideright", "fadewhite"]
+
+LOOKS = {
+    "warm": "colorbalance=rs=0.08:rm=0.06:bs=-0.08:bm=-0.06,eq=saturation=1.12",
+    "cool": "colorbalance=rs=-0.06:rm=-0.04:bs=0.09:bm=0.06,eq=saturation=1.05",
+    "bw": "hue=s=0,eq=contrast=1.12",
+    "vintage": "curves=preset=vintage,eq=saturation=0.85",
+    "vivid": "eq=saturation=1.35:contrast=1.08",
+}
 
 
-def plan_segments(D: float, n: int, per: float, trans: str):
-    """Work out the slideshow: (seconds each picture owns, number of segments, overlap seconds)."""
+def plan_segments(D: float, n: int, per: float, trans: str, cuts=None):
+    """Work out the slideshow: ([seconds each picture owns], overlap seconds for transitions)."""
     if n <= 1:
-        return D, 1, 0.0
-    L = per if per and per > 0 else D / n
-    L = max(L, 2.0)
-    count = int(math.ceil(D / L - 1e-6))    # pictures start over if the song is longer than one pass
-    count = max(1, min(count, MAX_SEGMENTS))
-    L = D / count if (not per or per <= 0 or count == MAX_SEGMENTS or count == 1) else L
-    T = 0.0 if trans == "cut" else min(1.0, L / 3.0)
-    return L, count, T
+        return [D], 0.0
+    if cuts:                                # cut times from the beat, in seconds from the start
+        b = [0.0] + [c for c in sorted(cuts) if 0.3 < c < D - 0.3] + [D]
+        while len(b) - 1 > MAX_SEGMENTS:    # too many cuts: keep every second one
+            b = b[::2] + ([D] if b[-1] != b[::2][-1] else [])
+        lens = [b[i + 1] - b[i] for i in range(len(b) - 1)]
+    else:
+        L = per if per and per > 0 else min(AUTO_CUT[1], max(AUTO_CUT[0], D / n))
+        L = max(L, 0.4, D / MAX_SEGMENTS)
+        count = max(1, int(math.ceil(D / L - 1e-6)))
+        lens = [L] * (count - 1) + [D - L * (count - 1)]
+    T = 0.0 if trans == "cut" else min(1.0, min(lens) / 3.0)
+    if T < 0.12 or len(lens) > XFADE_MAX:   # too short to blend, or too many to chain
+        T = 0.0
+    return lens, T
 
 
-def motion_filter(i: int, frames: int, seconds: float, zoom: bool, W: int, H: int) -> str:
+def motion_filter(i: int, frames: int, seconds: float, zoom: bool, W: int, H: int, punch: bool = False) -> str:
     """zoompan for one picture. The input is a single frame, zoompan makes all `frames` frames from it."""
     base = "d=%d:s=%dx%d:fps=%d" % (frames, W, H, FPS)
     if not zoom:
@@ -207,20 +228,34 @@ def motion_filter(i: int, frames: int, seconds: float, zoom: bool, W: int, H: in
     style = ("in", "out", "left", "right")[i % 4]
     if long_:
         style = "in" if i % 2 == 0 else "left"
+    kick = "+0.07*exp(-on/5)" if punch else ""      # a quick push-in as each new picture lands
     if style == "in":
-        z, x = "1+%.2f*%s" % (MOTION, ph), centre_x
+        z, x = "1+%.2f*%s%s" % (MOTION, ph, kick), centre_x
     elif style == "out":
-        z, x = "1+%.2f*(1-%s)" % (MOTION, ph), centre_x
+        z, x = "1+%.2f*(1-%s)%s" % (MOTION, ph, kick), centre_x
     elif style == "left":
-        z, x = "%.2f" % (1 + MOTION), "(iw-iw/zoom)*%s" % ph
+        z, x = "%.2f%s" % (1 + MOTION, kick), "(iw-iw/zoom)*%s" % ph
     else:
-        z, x = "%.2f" % (1 + MOTION), "(iw-iw/zoom)*(1-%s)" % ph
+        z, x = "%.2f%s" % (1 + MOTION, kick), "(iw-iw/zoom)*(1-%s)" % ph
     return "zoompan=z='%s':x='%s':y='%s':%s" % (z, x, centre_y, base)
+
+
+def look_filter(o: dict) -> str:
+    """Colour look, vignette and grain as one filter chain, or an empty string."""
+    f = []
+    if o.get("look") in LOOKS:
+        f.append(LOOKS[o["look"]])
+    if o.get("vignette"):
+        f.append("vignette=angle=PI/5")
+    if o.get("grain"):
+        f.append("noise=alls=10:allf=t+u")
+    return ",".join(f)
 
 
 def build_cmd(o: dict, enc: str, hwdec: bool, out_path: str) -> list:
     """o: kind, pictures (image) or visual (video), audio, W, H, D, start, fit, zoom, fade, bars, keep,
-    vis_has_audio, per (seconds per picture, 0 = automatic), trans (fade, slide or cut)."""
+    vis_has_audio, per (seconds per picture, 0 = automatic), cuts (beat cut times), trans, look, vignette,
+    grain, punch."""
     W, H, D = o["W"], o["H"], o["D"]
     fin, fout = min(0.6, D / 6.0), min(1.5, D / 4.0)
     kind = o["kind"]
@@ -230,14 +265,21 @@ def build_cmd(o: dict, enc: str, hwdec: bool, out_path: str) -> list:
     bars = bool(o["bars"]) and has_audio
     zoom = bool(o["zoom"]) and kind == "image"
     pics = o.get("pictures") or []
-    L, count, T = plan_segments(D, len(pics), o.get("per", 0), o.get("trans", "fade")) if kind == "image" else (D, 1, 0.0)
+    lens, T = plan_segments(D, len(pics), o.get("per", 0), o.get("trans", "fade"), o.get("cuts")) if kind == "image" else ([D], 0.0)
+    count = len(lens)
+    # each picture is decoded once and shared by every segment that shows it
+    used = []
+    for j in range(count):
+        if (j % len(pics) if pics else 0) not in used:
+            used.append(j % len(pics))
+    inputs = {pic: pos for pos, pic in enumerate(used)}
 
     cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-nostdin",
            "-progress", "pipe:1", "-nostats"]
     if kind == "image":  # one frame in per picture; zoompan turns it into all the frames (a looped PNG would be re-decoded every frame)
-        for i in range(count):
-            cmd += ["-protocol_whitelist", "file", "-i", pics[i % len(pics)]]
-        ai = count                      # index of the audio input
+        for pic in used:
+            cmd += ["-protocol_whitelist", "file", "-i", pics[pic]]
+        ai = len(used)                  # index of the audio input
     else:
         if enc == "nvenc" and hwdec:
             cmd += ["-hwaccel", "cuda"]
@@ -267,26 +309,47 @@ def build_cmd(o: dict, enc: str, hwdec: bool, out_path: str) -> list:
     if kind == "image":
         k = 2.0 if (zoom and W <= 1920) else (1.25 if zoom else 1.0)
         cw, ch = even(W * k), even(H * k)
-        seg_frames = max(2, int(round((L + T) * FPS)))
-        for i in range(count):
-            parts.append(compose("%d:v:0" % i, cw, ch, "p%d" % i))
-            parts.append("[p%d]%s,format=yuv420p,setsar=1[z%d]" % (i, motion_filter(i, seg_frames, L + T, zoom, W, H), i))
+        # frame boundaries from running totals, so the cuts never drift by rounding
+        bounds, acc = [0], 0.0
+        for ln in lens:
+            acc += ln
+            bounds.append(int(round(acc * FPS)))
+        tf = int(round(T * FPS))
+        seg_frames = [max(2, bounds[j + 1] - bounds[j] + (tf if j < count - 1 else 0)) for j in range(count)]
+        share = {}
+        for j in range(count):
+            share.setdefault(j % len(pics), []).append(j)
+        for pic, segs in share.items():
+            src = "%d:v:0" % inputs[pic]
+            parts.append(compose(src, cw, ch, "p%d" % pic))
+            if len(segs) > 1:
+                parts.append("[p%d]split=%d%s" % (pic, len(segs), "".join("[p%d_%d]" % (pic, u) for u in range(len(segs)))))
+        for j in range(count):
+            pic = j % len(pics)
+            lab = "p%d_%d" % (pic, share[pic].index(j)) if len(share[pic]) > 1 else "p%d" % pic
+            parts.append("[%s]%s,format=yuv420p,setsar=1[z%d]" % (
+                lab, motion_filter(j, seg_frames[j], seg_frames[j] / FPS, zoom, W, H, bool(o.get("punch")) and count > 1), j))
         if count == 1:
             parts.append("[z0]null[c1]")
         elif T == 0:
-            parts.append("%sconcat=n=%d:v=1:a=0[c1]" % ("".join("[z%d]" % i for i in range(count)), count))
+            parts.append("%sconcat=n=%d:v=1:a=0[c1]" % ("".join("[z%d]" % j for j in range(count)), count))
         else:
-            xt = "slideleft" if o.get("trans") == "slide" else "fade"
-            prev = "z0"
-            for i in range(1, count):
-                out = "c1" if i == count - 1 else "x%d" % i
-                parts.append("[%s][z%d]xfade=transition=%s:duration=%.3f:offset=%.3f[%s]" % (prev, i, xt, T, i * L, out))
+            prev, off = "z0", 0
+            for j in range(1, count):
+                off += bounds[j] - bounds[j - 1]
+                out = "c1" if j == count - 1 else "x%d" % j
+                tname = MIX_ORDER[(j - 1) % len(MIX_ORDER)] if o.get("trans") == "mix" else TRANSITIONS.get(o.get("trans"), "fade")
+                parts.append("[%s][z%d]xfade=transition=%s:duration=%.4f:offset=%.4f[%s]" % (prev, j, tname, tf / FPS, off / FPS, out))
                 prev = out
     elif kind == "video":
         parts.append("[0:v:0]fps=%d[v0]" % FPS)
         parts.append(compose("v0", W, H, "c1"))
 
     cur = "c1"
+    look = look_filter(o)
+    if look:
+        parts.append("[c1]%s[c1l]" % look)
+        cur = "c1l"
     if bars:
         n = 48                                   # bars on screen
         bh = even(H * 0.14)

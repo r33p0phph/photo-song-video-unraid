@@ -3,6 +3,13 @@
 Newest first. Each release is one plugin version. The Plugins page in Unraid shows this list too.
 Add the new entry at the top before building the plugin file with `plugin/make_plg.py`.
 
+## 2026.11.21g
+- Faster cuts. A new "Cut speed" menu runs from slow (8 seconds) down to rapid (half a second), or cuts on the beat of the song (every beat, every 2nd or every 4th). The beat is found automatically and the result line says what was found. If there is no clear beat, it falls back to the normal pace.
+- More ways between pictures: wipe, circle, dissolve, zoom, white flash, a mix of all of them, plus the old crossfade, slide and hard cut. An optional quick push-in on every cut.
+- Effects: color looks (warm, cool, black and white, vintage, vivid), dark edges and film grain.
+- Each picture is decoded once and reused for every cut, so many fast cuts use far less memory. Very long runs of transitions fall back to hard cuts, and no more than 300 cuts are made.
+- Compiled Python files are no longer kept in git.
+
 ## 2026.11.21f
 - The public app name and the build label are now kept apart. The page shows the name as its heading and the build label only in a small line at the bottom. `/api/health` reports both, and the image carries the label.
 - Install messages read "Photo and Song Video Maker (build ...)".

@@ -87,6 +87,7 @@ body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16p
 .sr:focus-visible + .drop{outline:3px solid var(--focus);outline-offset:2px}
 .sr:disabled + .drop{opacity:.55;cursor:not-allowed}
 
+#slideOpts{display:grid;gap:12px}
 .thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
 .thumb{position:relative;border:1px solid var(--line);border-radius:10px;background:var(--soft);overflow:hidden;min-width:0}
 .thumb .im{aspect-ratio:1;display:grid;place-items:center;overflow:hidden;background:var(--stage);color:#aeb5c8;font-size:.75rem;text-align:center;padding:4px;word-break:break-all}
@@ -198,19 +199,50 @@ button{font:inherit;cursor:pointer}
           <option value="fill">Fill the frame, crop the edges</option>
         </select>
       </label>
-      <div class="grid2" id="slideOpts" hidden>
-        <label class="field" for="perSec">Seconds per picture
-          <input type="number" id="perSec" min="2" step="any" placeholder="Automatic" inputmode="decimal">
-        </label>
-        <label class="field" for="trans">Between pictures
-          <select id="trans">
-            <option value="fade">Crossfade</option>
-            <option value="slide">Slide</option>
-            <option value="cut">Hard cut</option>
-          </select>
-        </label>
+      <div id="slideOpts" hidden>
+        <div class="grid2">
+          <label class="field" for="cutSpeed">Cut speed
+            <select id="cutSpeed">
+              <option value="auto">Automatic, about 4 seconds</option>
+              <option value="8">Slow, 8 seconds</option>
+              <option value="4">Medium, 4 seconds</option>
+              <option value="2">Fast, 2 seconds</option>
+              <option value="1">Very fast, 1 second</option>
+              <option value="0.5">Rapid, half a second</option>
+              <option value="beat1">On every beat</option>
+              <option value="beat2">On every 2nd beat</option>
+              <option value="beat4">On every 4th beat</option>
+            </select>
+          </label>
+          <label class="field" for="trans">Between pictures
+            <select id="trans">
+              <option value="fade">Crossfade</option>
+              <option value="slide">Slide</option>
+              <option value="wipe">Wipe</option>
+              <option value="circle">Circle</option>
+              <option value="dissolve">Dissolve</option>
+              <option value="zoom">Zoom</option>
+              <option value="flash">White flash</option>
+              <option value="mix">Mix of all</option>
+              <option value="cut">Hard cut</option>
+            </select>
+          </label>
+        </div>
+        <label class="check" for="punch"><input type="checkbox" id="punch"><span>Quick push-in on every cut</span></label>
       </div>
+      <label class="field" for="look">Color look
+        <select id="look">
+          <option value="none">None</option>
+          <option value="warm">Warm</option>
+          <option value="cool">Cool</option>
+          <option value="bw">Black and white</option>
+          <option value="vintage">Vintage</option>
+          <option value="vivid">Vivid</option>
+        </select>
+      </label>
       <label class="check" for="zoom"><input type="checkbox" id="zoom" checked><span>Zoom and pan on pictures</span></label>
+      <label class="check" for="vignette"><input type="checkbox" id="vignette"><span>Dark edges (vignette)</span></label>
+      <label class="check" for="grain"><input type="checkbox" id="grain"><span>Film grain</span></label>
       <label class="check" for="fade"><input type="checkbox" id="fade" checked><span>Fade in and out</span></label>
       <label class="check" for="bars"><input type="checkbox" id="bars"><span>Music bars along the bottom</span></label>
     </section>
@@ -494,7 +526,7 @@ button{font:inherit;cursor:pointer}
   /* ---------- running a job ---------- */
   function setBusy(b) {
     S.busy = b;
-    ['visualFile', 'audioFile', 'startAt', 'lenSec', 'keepSound', 'removeSong', 'clearVisual', 'perSec', 'trans', 'format', 'quality', 'fit', 'zoom', 'fade', 'bars', 'makeBtn']
+    ['visualFile', 'audioFile', 'startAt', 'lenSec', 'keepSound', 'removeSong', 'clearVisual', 'cutSpeed', 'trans', 'punch', 'look', 'vignette', 'grain', 'format', 'quality', 'fit', 'zoom', 'fade', 'bars', 'makeBtn']
       .forEach(function (id) { $(id).disabled = b; });
     $('progress').hidden = !b;
     renderThumbs();
@@ -519,8 +551,11 @@ button{font:inherit;cursor:pointer}
     if (S.items.length) {
       S.items.forEach(function (it) { fd.append('visual', it.file, it.file.name); });
       fd.append('rotations', S.items.map(function (it) { return it.rot; }).join(','));
-      fd.append('per', String(S.items.length > 1 ? num('perSec', 0) : 0));
+      const cs = $('cutSpeed').value;
+      fd.append('per', cs.indexOf('beat') === 0 || cs === 'auto' ? '0' : cs);
+      fd.append('cut', cs.indexOf('beat') === 0 ? cs : 'auto');
       fd.append('trans', $('trans').value);
+      fd.append('punch', $('punch').checked ? '1' : '0');
     } else {
       fd.append('visual', S.visual, S.visual.name);
     }
@@ -529,6 +564,9 @@ button{font:inherit;cursor:pointer}
     fd.append('quality', $('quality').value);
     fd.append('fit', $('fit').value);
     fd.append('zoom', $('zoom').checked ? '1' : '0');
+    fd.append('look', $('look').value);
+    fd.append('vignette', $('vignette').checked ? '1' : '0');
+    fd.append('grain', $('grain').checked ? '1' : '0');
     fd.append('fade', $('fade').checked ? '1' : '0');
     fd.append('bars', $('bars').checked ? '1' : '0');
     fd.append('keep_sound', $('keepSound').checked ? '1' : '0');
@@ -597,7 +635,7 @@ button{font:inherit;cursor:pointer}
     $('dlBtn').setAttribute('download', j.filename || 'video.mp4');
     const speed = j.render_seconds ? (j.length / j.render_seconds).toFixed(1) + 'x real time' : '';
     $('rmeta').textContent = 'MP4, ' + fmtTime(j.length) + ', ' + j.width + '×' + j.height + ', ' + fmtSize(j.bytes) +
-      '. Rendered in ' + fmtTime(j.render_seconds || 0) + (speed ? ' (' + speed + ')' : '') + ' with ' + (j.encoder === 'nvenc' ? 'NVENC' : 'the CPU') + '.';
+      '. Rendered in ' + fmtTime(j.render_seconds || 0) + (speed ? ' (' + speed + ')' : '') + ' with ' + (j.encoder === 'nvenc' ? 'NVENC' : 'the CPU') + '.' + (j.note ? ' ' + j.note : '');
     $('result').hidden = false;
     try { $('result').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { /* ignore */ }
   }
@@ -630,7 +668,7 @@ button{font:inherit;cursor:pointer}
   $('startAt').addEventListener('input', function () { setDefaultLength(); updateUI(); });
   $('lenSec').addEventListener('input', function () { S.lenTouched = true; updateUI(); });
   ['format', 'fit'].forEach((id) => $(id).addEventListener('change', renderStage));
-  ['format', 'quality', 'fit', 'zoom', 'fade', 'bars', 'keepSound', 'perSec', 'trans'].forEach((id) => $(id).addEventListener('change', updateUI));
+  ['format', 'quality', 'fit', 'zoom', 'fade', 'bars', 'keepSound', 'cutSpeed', 'trans', 'look', 'vignette', 'grain', 'punch'].forEach((id) => $(id).addEventListener('change', updateUI));
 
   $('makeBtn').addEventListener('click', submit);
   $('cancelBtn').addEventListener('click', function () {

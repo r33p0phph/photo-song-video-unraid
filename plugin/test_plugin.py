@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run the .plg against a fake Unraid root with stub docker/curl/ss/hostname commands."""
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -163,6 +164,8 @@ def check(label, cond, detail=""):
 
 
 plg1, plg2 = sys.argv[1], sys.argv[2]
+V1 = re.search(r'ENTITY version "([^"]+)"', open(plg1).read()).group(1)
+V2 = re.search(r'ENTITY version "([^"]+)"', open(plg2).read()).group(1)
 TPL = ROOT / "boot/config/plugins/dockerMan/templates-user/my-photo-song-video.xml"
 
 # 1. fresh install with NVIDIA runtime
@@ -170,8 +173,8 @@ reset()
 code, out = run_plg(plg1)
 run = (STATE / "run_args").read_text() if (STATE / "run_args").exists() else ""
 check("1 fresh install exits 0", code == 0, out[-300:])
-check("1 image built with version label", (STATE / "image_version").read_text().strip() == "2026.11.21")
-check("1 build label passed to the image build", (STATE / "build_args").read_text().strip() == "PSV_BUILD=2026.11.21")
+check("1 image built with version label", (STATE / "image_version").read_text().strip() == V1)
+check("1 build label passed to the image build", (STATE / "build_args").read_text().strip() == "PSV_BUILD=" + V1)
 check("1 container uses nvidia runtime and port 8095", "--runtime=nvidia" in run and "-p 8095:8000" in run, run)
 check("1 plugin labels set", "psv.plugin=1" in run and "net.unraid.docker.managed=dockerman" in run)
 check("1 template written with port 8095", TPL.exists() and ">8095</Config>" in TPL.read_text())
@@ -198,8 +201,8 @@ TPL.write_text(TPL.read_text() + "<!-- user edit -->")
 (STATE / "c_env").write_text("NVIDIA_VISIBLE_DEVICES=GPU-1234\nNVIDIA_DRIVER_CAPABILITIES=all\n")
 code, out = run_plg(plg2)
 run = (STATE / "run_args").read_text()
-check("4 upgrade rebuilds with the new version", (STATE / "image_version").read_text().strip() == "2026.11.22", out[-300:])
-check("4 upgrade replaced the setup script", '2026.11.22' in (ROOT / "usr/local/sbin/psv-setup").read_text())
+check("4 upgrade rebuilds with the new version", (STATE / "image_version").read_text().strip() == V2, out[-300:])
+check("4 upgrade replaced the setup script", V2 in (ROOT / "usr/local/sbin/psv-setup").read_text())
 check("4 upgrade keeps port and GPU choice", "-p 8100:8000" in run and "NVIDIA_VISIBLE_DEVICES=GPU-1234" in run, run)
 check("4 template edits are kept", "<!-- user edit -->" in TPL.read_text())
 

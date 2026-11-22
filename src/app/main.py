@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
-from . import render
+from . import beats, render
 
 log = logging.getLogger("psv")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -59,6 +59,7 @@ class Job:
         self.render_seconds = None
         self.opts = None
         self.encoder = None
+        self.note = None
         self.bytes = 0
         self.proc = None
         self.cancelled = False
@@ -85,6 +86,7 @@ class Job:
             "bytes": self.bytes,
             "render_seconds": self.render_seconds,
             "filename": self.download_name,
+            "note": self.note,
         }
 
 
@@ -157,10 +159,26 @@ def prepare(job):
     if D < 0.5:
         raise render.InputError("The video length is too short. Use at least 1 second.")
 
+    cuts = None
+    if s.get("cut", "auto").startswith("beat") and kind == "image" and len(pics) > 1:
+        if aud_path is None:
+            job.note = "Cutting on the beat needs a song, so the pictures change every few seconds instead."
+        else:
+            step = int(s["cut"][4:] or 1)
+            found = beats.detect(str(aud_path), start, D)
+            if found is None:
+                job.note = "No clear beat was found in this audio, so the pictures change every few seconds instead."
+            else:
+                cuts = found["beats"][::step]
+                job.note = "Cuts follow the beat, about %d BPM%s." % (
+                    round(found["bpm"]), "" if step == 1 else ", every %d beats" % step)
+
     W, H = render.out_size(s["fmt"], s["quality"], vinfo["w"], vinfo["h"])
     job.opts = {
         "kind": kind, "visual": str(vis_path) if vis_path else None, "pictures": pics,
-        "per": s.get("per", 0.0), "trans": s.get("trans", "fade"),
+        "per": s.get("per", 0.0), "trans": s.get("trans", "fade"), "cuts": cuts,
+        "look": s.get("look", "none"), "vignette": s.get("vignette", False), "grain": s.get("grain", False),
+        "punch": s.get("punch", False),
         "audio": str(aud_path) if aud_path else None,
         "W": W, "H": H, "D": D, "start": start, "fit": s["fit"], "zoom": s["zoom"],
         "fade": s["fade"], "bars": s["bars"], "keep": s["keep_sound"],
@@ -332,7 +350,12 @@ async def create_job(
     audio: UploadFile | None = File(None),
     rotations: str = Form(""),
     per: float = Form(0.0),
+    cut: str = Form("auto"),
     trans: str = Form("fade"),
+    look: str = Form("none"),
+    vignette: bool = Form(False),
+    grain: bool = Form(False),
+    punch: bool = Form(False),
     fmt: str = Form("source"),
     quality: int = Form(1080),
     fit: str = Form("fit"),
@@ -349,8 +372,12 @@ async def create_job(
         raise HTTPException(400, "Unknown quality.")
     if fit not in ("fit", "fill"):
         raise HTTPException(400, "Unknown placement.")
-    if trans not in ("fade", "slide", "cut"):
+    if trans not in ("cut", "mix") and trans not in render.TRANSITIONS:
         raise HTTPException(400, "Unknown transition.")
+    if look != "none" and look not in render.LOOKS:
+        raise HTTPException(400, "Unknown look.")
+    if cut not in ("auto", "beat1", "beat2", "beat4"):
+        raise HTTPException(400, "Unknown cut speed.")
     if not visual or len(visual) > MAX_PICTURES:
         raise HTTPException(400, "Add between 1 and %d pictures." % MAX_PICTURES)
     try:
@@ -363,7 +390,8 @@ async def create_job(
         "fmt": fmt, "quality": quality, "fit": fit, "zoom": zoom, "fade": fade, "bars": bars,
         "keep_sound": keep_sound, "start": max(0.0, min(start, 86400.0)),
         "length": max(0.0, min(length, float(MAX_LENGTH))),
-        "rotations": rots, "per": max(0.0, min(per, 600.0)), "trans": trans,
+        "rotations": rots, "per": max(0.0, min(per, 600.0)), "trans": trans, "cut": cut,
+        "look": look, "vignette": vignette, "grain": grain, "punch": punch,
     }
     jid = uuid.uuid4().hex[:12]
     job = Job(jid, visual[0].filename or "video", settings)
