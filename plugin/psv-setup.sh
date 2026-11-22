@@ -61,10 +61,10 @@ fi
 # A container with the same name that this plugin did not create is left alone.
 GPU="all"
 PORT=""
-if docker inspect "$NAME" >/dev/null 2>&1; then
-  if [ "$(docker inspect -f '{{index .Config.Labels "psv.plugin"}}' "$NAME" 2>/dev/null)" = "1" ]; then
-    PORT=$(docker inspect -f '{{with index .HostConfig.PortBindings "8000/tcp"}}{{(index . 0).HostPort}}{{end}}' "$NAME" 2>/dev/null)
-    G=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$NAME" 2>/dev/null | sed -n 's/^NVIDIA_VISIBLE_DEVICES=//p' | head -n 1)
+if docker inspect --type container "$NAME" >/dev/null 2>&1; then
+  if [ "$(docker inspect --type container -f '{{index .Config.Labels "psv.plugin"}}' "$NAME" 2>/dev/null)" = "1" ]; then
+    PORT=$(docker inspect --type container -f '{{with index .HostConfig.PortBindings "8000/tcp"}}{{(index . 0).HostPort}}{{end}}' "$NAME" 2>/dev/null)
+    G=$(docker inspect --type container -f '{{range .Config.Env}}{{println .}}{{end}}' "$NAME" 2>/dev/null | sed -n 's/^NVIDIA_VISIBLE_DEVICES=//p' | head -n 1)
     [ -n "$G" ] && GPU="$G"
     docker rm -f "$NAME" >/dev/null 2>&1
   else

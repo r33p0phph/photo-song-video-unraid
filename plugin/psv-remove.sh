@@ -4,8 +4,8 @@ NAME=photo-song-video
 FLASH="${FLASH:-/boot}"
 
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-  if docker inspect "$NAME" >/dev/null 2>&1; then
-    if [ "$(docker inspect -f '{{index .Config.Labels "psv.plugin"}}' "$NAME" 2>/dev/null)" = "1" ]; then
+  if docker inspect --type container "$NAME" >/dev/null 2>&1; then
+    if [ "$(docker inspect --type container -f '{{index .Config.Labels "psv.plugin"}}' "$NAME" 2>/dev/null)" = "1" ]; then
       docker rm -f "$NAME" >/dev/null 2>&1 && echo "Removed the container."
     else
       echo "Left the container $NAME alone because this plugin did not create it."

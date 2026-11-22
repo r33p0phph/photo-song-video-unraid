@@ -34,8 +34,14 @@ case "$cmd" in
     echo "Step 1/9 : FROM ubuntu:24.04 (stub)"; echo "Successfully built"
     echo 1 > "$S/image"; echo "$label" > "$S/image_version"; exit 0;;
   inspect)
+    # Real docker: without --type, a name that is not a container falls back to an image of that name.
+    type=""
+    if [ "$1" = "--type" ]; then type="$2"; shift 2; fi
     if [ "$1" = "-f" ]; then fmt="$2"; else fmt=""; fi
-    [ -f "$S/container" ] || exit 1
+    if [ ! -f "$S/container" ]; then
+      if [ -z "$type" ] && [ -f "$S/image" ]; then exit 0; fi
+      exit 1
+    fi
     case "$fmt" in
       *psv.plugin*) cat "$S/c_label" 2>/dev/null;;
       *PortBindings*) cat "$S/c_port" 2>/dev/null;;

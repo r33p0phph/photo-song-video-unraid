@@ -1,7 +1,7 @@
 <?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
 <!ENTITY name "photo-song-video">
-<!ENTITY version "2026.11.21">
+<!ENTITY version "2026.11.21a">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/r33p0phph/photo-song-video-unraid/main/photo-song-video.plg">
 <!ENTITY emhttp "/usr/local/emhttp/plugins/&name;">
 <!ENTITY flash "/boot/config/plugins/&name;">
@@ -9,7 +9,7 @@
 <PLUGIN name="&name;" author="Built with Claude" version="&version;" min="6.12.0" pluginURL="&pluginURL;">
 
 <CHANGES>
-###2026.11.21
+###2026.11.21a
 - First release. Builds the app image on the server, adds it to the Docker tab and starts it. Uses the NVIDIA GPU (NVENC) when the Nvidia Driver plugin is installed, otherwise the CPU.
 </CHANGES>
 
@@ -23,7 +23,7 @@ mkdir -p &emhttp; &flash;
 <!-- the app, packed as a base64 tarball -->
 <FILE Name="&emhttp;/payload.b64" Mode="0644">
 <INLINE><![CDATA[
-H4sIABpJAmsC/+2963oTSbY22L91FVmiaUmUzj4AMnJvg03hbsAeG6ju8fYnp6WULdCplCkbb+B5
+H4sIAD5NAmsC/+2963oTSbY22L91FVmiaUmUzj4AMnJvg03hbsAeG6ju8fYnp6WULdCplCkbb+B5
 5i7mDuZG5k7mSuZ914rIjExJNlRXVe9nf6i7cGZkHFesWLFOsaLam3Q/BLPBxXgyC/70+/zq+G2u
 r8tf/LJ/6/WHzjPTG/X1xuafvPqf/oDfPIz8GZr/0/+evwcPap3O9Kbrdy+DTif3oIrnXPViEOWO
 9nZ2X+1VR73cfDzzB71KFIymQz8Kqh9Hw9yfvv/+R/x2Zfn3B8Pg92vjjvXfrK89TK//+sOH643v
@@ -389,7 +389,7 @@ pXdzWyd3akvpMn8e4KhWL/gtxsbGV49NKIOad0PEuoBLlzuqjL7BGRICLS4fUDoMb7gkqrTQITkd
 # Photo and Song Video Maker: set up the Docker image and container on Unraid.
 # Runs when the plugin is installed or updated. Safe to run again: psv-setup [--force]
 NAME=photo-song-video
-VERSION="2026.11.21"
+VERSION="2026.11.21a"
 FLASH="${FLASH:-/boot}"
 PLUGIN_DIR="${PLUGIN_DIR:-/usr/local/emhttp/plugins/$NAME}"
 APPDATA="${APPDATA:-/mnt/user/appdata}"
@@ -448,10 +448,10 @@ fi
 # A container with the same name that this plugin did not create is left alone.
 GPU="all"
 PORT=""
-if docker inspect "$NAME" >/dev/null 2>&1; then
-  if [ "$(docker inspect -f '{{index .Config.Labels "psv.plugin"}}' "$NAME" 2>/dev/null)" = "1" ]; then
-    PORT=$(docker inspect -f '{{with index .HostConfig.PortBindings "8000/tcp"}}{{(index . 0).HostPort}}{{end}}' "$NAME" 2>/dev/null)
-    G=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$NAME" 2>/dev/null | sed -n 's/^NVIDIA_VISIBLE_DEVICES=//p' | head -n 1)
+if docker inspect --type container "$NAME" >/dev/null 2>&1; then
+  if [ "$(docker inspect --type container -f '{{index .Config.Labels "psv.plugin"}}' "$NAME" 2>/dev/null)" = "1" ]; then
+    PORT=$(docker inspect --type container -f '{{with index .HostConfig.PortBindings "8000/tcp"}}{{(index . 0).HostPort}}{{end}}' "$NAME" 2>/dev/null)
+    G=$(docker inspect --type container -f '{{range .Config.Env}}{{println .}}{{end}}' "$NAME" 2>/dev/null | sed -n 's/^NVIDIA_VISIBLE_DEVICES=//p' | head -n 1)
     [ -n "$G" ] && GPU="$G"
     docker rm -f "$NAME" >/dev/null 2>&1
   else
@@ -533,8 +533,8 @@ NAME=photo-song-video
 FLASH="${FLASH:-/boot}"
 
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-  if docker inspect "$NAME" >/dev/null 2>&1; then
-    if [ "$(docker inspect -f '{{index .Config.Labels "psv.plugin"}}' "$NAME" 2>/dev/null)" = "1" ]; then
+  if docker inspect --type container "$NAME" >/dev/null 2>&1; then
+    if [ "$(docker inspect --type container -f '{{index .Config.Labels "psv.plugin"}}' "$NAME" 2>/dev/null)" = "1" ]; then
       docker rm -f "$NAME" >/dev/null 2>&1 && echo "Removed the container."
     else
       echo "Left the container $NAME alone because this plugin did not create it."
